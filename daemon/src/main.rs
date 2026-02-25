@@ -1,6 +1,9 @@
 #![warn(clippy::pedantic, clippy::allow_attributes)]
 
-use std::io::{Read, Write};
+use std::{
+    env,
+    io::{Read, Write},
+};
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use tokio::{
@@ -42,7 +45,10 @@ async fn handle_client_connection(socket: TcpStream) -> Res<()> {
     let pty = native_pty_system();
     let pair = pty.openpty(PtySize::default())?;
 
-    let mut child = pair.slave.spawn_command(CommandBuilder::new("bash"))?;
+    let default_shell = env::var("SHELL").unwrap_or("/bin/sh".to_string());
+
+    let mut child =
+        pair.slave.spawn_command(CommandBuilder::new(default_shell))?;
 
     drop(pair.slave);
 
