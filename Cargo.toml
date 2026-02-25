@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["s0ra-ssh", "s0ra-sshd"]
