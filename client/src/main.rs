@@ -2,15 +2,13 @@
 
 use std::{
     error::Error,
-    fs::File,
-    io::{BufReader, ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
+    io::{ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
     process::exit,
     sync::Arc,
 };
 
 use argh::{FromArgValue, FromArgs};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use rustls_pemfile::certs;
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
     net::TcpStream,
@@ -21,8 +19,10 @@ use tokio::{
 use tokio_rustls::{
     TlsConnector,
     client::TlsStream,
-    rustls::{ClientConfig, RootCertStore, pki_types::ServerName},
+    rustls::{ClientConfig, pki_types::ServerName},
 };
+
+use crate::fingerprint::FingerprintCheck;
 
 /// Expects Result<T, E>
 macro_rules! break_if {
@@ -74,17 +74,20 @@ struct Args {
 type BoxedError = Box<dyn Error + Send + Sync>;
 type Res<T> = Result<T, BoxedError>;
 
+mod fingerprint;
+
 #[tokio::main]
 async fn main() -> Res<()> {
     let args: Args = argh::from_env();
     let host = args.user_at_host.host;
     let port = args.port;
-    let stream = connect_tls(&host, port).await?;
-    let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
-    let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
 
     enable_raw_mode()?;
     let guard = RawModeGuard;
+
+    let stream = connect_tls(&host, port).await?;
+    let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
+    let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
 
     spawn_blocking(move || read_stdin(stdin_tx));
     spawn(forward_to_server(stdin_rx, tcp_tx));
@@ -107,15 +110,10 @@ async fn main() -> Res<()> {
 }
 
 async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
-    let certs = certs(&mut BufReader::new(File::open("server.pem")?))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let mut roots = RootCertStore::empty();
-    roots.add_parsable_certificates(certs);
-
     let connector = TlsConnector::from(Arc::new(
         ClientConfig::builder()
-            .with_root_certificates(roots)
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(FingerprintCheck))
             .with_no_client_auth(),
     ));
 
