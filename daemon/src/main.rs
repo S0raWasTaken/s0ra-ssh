@@ -1,9 +1,10 @@
 #![warn(clippy::pedantic, clippy::allow_attributes)]
-
+#![feature(drop_guard)]
 use std::{
     env,
     fs::File,
     io::{BufReader, Read, Write},
+    mem::DropGuard,
     sync::Arc,
 };
 
@@ -76,11 +77,15 @@ where
     let default_shell =
         env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
 
-    let mut child =
-        pair.slave.spawn_command(CommandBuilder::new(default_shell))?;
+    let mut cmd = CommandBuilder::new(default_shell);
+    cmd.env("TERM", env::var("TERM").unwrap_or("xterm-256color".to_string()));
 
+    let child = pair.slave.spawn_command(cmd)?;
+
+    let _guard = DropGuard::new(child, |mut child| {
+        child.kill().ok(); // Best line of code
+    });
     drop(pair.slave);
-
     let reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
     let (mut tcp_rx, tcp_tx) = tokio::io::split(socket);
@@ -103,7 +108,6 @@ where
         }
     }
 
-    child.kill()?;
     Ok(())
 }
 
