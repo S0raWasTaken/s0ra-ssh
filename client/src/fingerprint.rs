@@ -3,11 +3,9 @@ use std::{
     error::Error,
     fs::create_dir_all,
     io::{Read, Write, stdin, stdout},
-    process::exit,
     sync::Arc,
 };
 
-use crossterm::terminal::disable_raw_mode;
 use daybreak::{FileDatabase, deser::Yaml};
 use dirs::cache_dir;
 use sha2::{Digest, Sha256};
@@ -68,10 +66,13 @@ impl ServerCertVerifier for FingerprintCheck {
 
         let is_known_host = db
             .as_ref()
-            .and_then(|db| {
-                let mut db = db.get_data(false).ok()?; // No need to double load
-                db.remove(&server_name.to_string())
+            .map(|db| -> Result<Option<String>, daybreak::Error> {
+                let mut db = db.get_data(false)?; // No need to double load
+                Ok(db.remove(&server_name.to_string()))
             })
+            .transpose()
+            .map_err(into_other)?
+            .flatten()
             .is_some_and(|known_fingerprint| {
                 let matches = known_fingerprint == fingerprint;
 
@@ -103,11 +104,10 @@ impl ServerCertVerifier for FingerprintCheck {
 
         if should_reject {
             eprintln!("Rejected!\n");
-            disable_raw_mode().ok();
-            exit(1);
+            return Err(rustls::Error::General(
+                "certificate rejected by user".into(),
+            ));
         }
-
-        println!("Accepted!\n");
 
         if !is_known_host {
             db.map(|db| -> Result<(), daybreak::Error> {
@@ -122,7 +122,7 @@ impl ServerCertVerifier for FingerprintCheck {
 
                 db.save()?;
                 println!(
-                    "Saved new host to {}",
+                    "Accepted!\nSaved new host to {}\n",
                     // Should be safe, if db exists, it must mean that the cache_dir must too.
                     cache_dir().unwrap().join("s0ra-ssh/known_hosts").display()
                 );
@@ -176,6 +176,7 @@ fn request_confirmation(message: &str) -> Result<bool, rustls::Error> {
 
     let mut buffer = [0u8; 1];
     stdin().read_exact(&mut buffer).map_err(into_other)?;
+    println!();
 
     // case-insensitive 'Y' check
     Ok(buffer[0] & 0xDF == b'Y')

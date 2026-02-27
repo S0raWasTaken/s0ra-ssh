@@ -5,6 +5,7 @@ use std::{
     io::{ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
     process::exit,
     sync::Arc,
+    time::Duration,
 };
 
 use argh::{FromArgValue, FromArgs};
@@ -117,11 +118,17 @@ async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
             .with_no_client_auth(),
     ));
 
-    let tcp = TcpStream::connect(format!("{host}:{port}")).await?;
+    let tcp = timeout(TcpStream::connect(format!("{host}:{port}"))).await??;
 
     let domain = ServerName::try_from(host.to_string())?;
 
-    Ok(connector.connect(domain, tcp).await?)
+    Ok(timeout(connector.connect(domain, tcp)).await??)
+}
+
+async fn timeout<F: IntoFuture>(
+    f: F,
+) -> Result<F::Output, tokio::time::error::Elapsed> {
+    tokio::time::timeout(Duration::from_secs(10), f).await
 }
 
 #[expect(clippy::needless_pass_by_value)]
