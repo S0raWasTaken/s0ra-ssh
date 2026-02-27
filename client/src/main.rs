@@ -2,19 +2,28 @@
 
 use std::{
     error::Error,
-    io::{Read, Write, stdin, stdout},
+    io::{ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
     process::exit,
+    sync::Arc,
+    time::Duration,
 };
 
 use argh::{FromArgValue, FromArgs};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpStream, tcp::OwnedWriteHalf},
+    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
+    net::TcpStream,
     spawn,
     sync::mpsc::{Receiver, Sender, channel},
     task::spawn_blocking,
 };
+use tokio_rustls::{
+    TlsConnector,
+    client::TlsStream,
+    rustls::{ClientConfig, pki_types::ServerName},
+};
+
+use crate::fingerprint::FingerprintCheck;
 
 /// Expects Result<T, E>
 macro_rules! break_if {
@@ -66,17 +75,20 @@ struct Args {
 type BoxedError = Box<dyn Error + Send + Sync>;
 type Res<T> = Result<T, BoxedError>;
 
+mod fingerprint;
+
 #[tokio::main]
 async fn main() -> Res<()> {
     let args: Args = argh::from_env();
     let host = args.user_at_host.host;
     let port = args.port;
-    let socket = TcpStream::connect(format!("{host}:{port}")).await?;
-    let (mut tcp_rx, tcp_tx) = socket.into_split();
-    let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
 
     enable_raw_mode()?;
     let guard = RawModeGuard;
+
+    let stream = connect_tls(&host, port).await?;
+    let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
+    let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
 
     spawn_blocking(move || read_stdin(stdin_tx));
     spawn(forward_to_server(stdin_rx, tcp_tx));
@@ -84,16 +96,39 @@ async fn main() -> Res<()> {
     let mut buf = [0u8; 1024];
     let mut stdout = stdout().lock();
     loop {
-        let n = tcp_rx.read(&mut buf).await?;
-
-        if n == 0 {
-            drop(guard);
-            exit(0);
+        match tcp_rx.read(&mut buf).await {
+            Ok(n) if n > 0 => {
+                stdout.write_all(&buf[..n])?;
+                stdout.flush()?;
+            }
+            Err(e) if e.kind() != UnexpectedEof => return Err(e.into()),
+            _ => {
+                drop(guard);
+                exit(0);
+            }
         }
-
-        stdout.write_all(&buf[..n])?;
-        stdout.flush()?;
     }
+}
+
+async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
+    let connector = TlsConnector::from(Arc::new(
+        ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(FingerprintCheck))
+            .with_no_client_auth(),
+    ));
+
+    let tcp = timeout(TcpStream::connect(format!("{host}:{port}"))).await??;
+
+    let domain = ServerName::try_from(host.to_string())?;
+
+    Ok(timeout(connector.connect(domain, tcp)).await??)
+}
+
+async fn timeout<F: IntoFuture>(
+    f: F,
+) -> Result<F::Output, tokio::time::error::Elapsed> {
+    tokio::time::timeout(Duration::from_secs(10), f).await
 }
 
 #[expect(clippy::needless_pass_by_value)]
@@ -109,9 +144,9 @@ fn read_stdin(tx: Sender<Vec<u8>>) {
     }
 }
 
-async fn forward_to_server(
+async fn forward_to_server<S: AsyncWrite>(
     mut rx: Receiver<Vec<u8>>,
-    mut tcp_tx: OwnedWriteHalf,
+    mut tcp_tx: WriteHalf<S>,
 ) {
     while let Some(data) = rx.recv().await {
         break_if!(tcp_tx.write_all(&data).await.is_err());
