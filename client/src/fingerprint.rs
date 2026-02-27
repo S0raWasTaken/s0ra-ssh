@@ -75,9 +75,7 @@ impl ServerCertVerifier for FingerprintCheck {
             .is_some_and(|known_fingerprint| {
                 let matches = known_fingerprint == fingerprint;
 
-                if matches {
-                    println!("The server's fingerprint is {fingerprint}");
-                } else {
+                if !matches {
                     eprintln!(
                         "{FINGERPRINT_MISMATCH}\n  \
                             host:       {server_name}\n  \
@@ -88,6 +86,10 @@ impl ServerCertVerifier for FingerprintCheck {
                 fingerprint_mismatch = !matches;
                 matches
             });
+
+        if !is_known_host && !fingerprint_mismatch {
+            println!("The server's fingerprint is {fingerprint}");
+        }
 
         let should_reject = if is_known_host {
             false
@@ -109,8 +111,15 @@ impl ServerCertVerifier for FingerprintCheck {
 
         if !is_known_host {
             db.map(|db| -> Result<(), daybreak::Error> {
-                let mut data = db.borrow_data_mut()?;
-                data.insert(server_name.to_string(), fingerprint);
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Not worth refactoring"
+                )]
+                {
+                    let mut data = db.borrow_data_mut()?;
+                    data.insert(server_name.to_string(), fingerprint);
+                }
+
                 db.save()?;
                 println!(
                     "Saved new host to {}",

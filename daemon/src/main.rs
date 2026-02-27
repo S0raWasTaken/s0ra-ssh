@@ -1,14 +1,21 @@
 #![warn(clippy::pedantic, clippy::allow_attributes)]
-#![feature(drop_guard)]
 use std::{
     env,
+    fmt::Display,
     fs::File,
     io::{BufReader, Read, Write},
-    mem::DropGuard,
     sync::Arc,
 };
 
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+struct ChildGuard(Box<dyn Child + Send + Sync>);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill().inspect_err(print_err);
+    }
+}
+
+use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 use rustls_pemfile::{certs, private_key};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
@@ -44,13 +51,16 @@ async fn main() -> Res<()> {
         let acceptor = acceptor.clone();
 
         spawn(async move {
-            let socket = acceptor.accept(socket).await?;
+            let socket =
+                acceptor.accept(socket).await.inspect_err(print_err)?;
 
-            handle_client_connection(socket)
-                .await
-                .inspect_err(|e| eprintln!("{e}"))
+            handle_client_connection(socket).await.inspect_err(print_err)
         });
     }
+}
+
+fn print_err<E: Display>(e: &E) {
+    eprintln!("{e}");
 }
 
 fn make_acceptor() -> Res<TlsAcceptor> {
@@ -82,9 +92,8 @@ where
 
     let child = pair.slave.spawn_command(cmd)?;
 
-    let _guard = DropGuard::new(child, |mut child| {
-        child.kill().ok(); // Best line of code
-    });
+    let _guard = ChildGuard(child);
+
     drop(pair.slave);
     let reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
