@@ -1,5 +1,3 @@
-#![warn(clippy::pedantic, clippy::allow_attributes)]
-
 use std::{
     error::Error,
     io::{ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
@@ -8,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use argh::{FromArgValue, FromArgs};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use tokio::{
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
@@ -23,54 +20,14 @@ use tokio_rustls::{
     rustls::{ClientConfig, pki_types::ServerName},
 };
 
-use crate::fingerprint::FingerprintCheck;
-use libssh0::DropGuard;
-
-/// Expects Result<T, E>
-macro_rules! break_if {
-    ($x:expr) => {
-        if $x {
-            break;
-        }
-    };
-}
-
-struct UserAtHost {
-    #[expect(dead_code)]
-    user: String,
-    host: String,
-}
-
-const INVALID_ARG: &str = "Invalid first argument, expected user@host";
-
-impl FromArgValue for UserAtHost {
-    // user@host expected
-    fn from_arg_value(value: &str) -> Result<Self, String> {
-        let mut split = value.split('@');
-
-        let user = split.next().ok_or(INVALID_ARG)?.to_string();
-        let host = split.next().ok_or(INVALID_ARG)?.to_string();
-        Ok(Self { user, host })
-    }
-}
-
-/// meow
-#[derive(FromArgs)]
-struct Args {
-    /// meow
-    #[argh(positional)]
-    user_at_host: UserAtHost,
-
-    /// meow
-    #[argh(option, default = "2121")]
-    port: u16,
-}
+use crate::{args::Args, fingerprint::FingerprintCheck};
+use libssh0::{DropGuard, break_if};
 
 type BoxedError = Box<dyn Error + Send + Sync>;
 type Res<T> = Result<T, BoxedError>;
 
+mod args;
 mod fingerprint;
-
 #[tokio::main]
 async fn main() -> Res<()> {
     let args: Args = argh::from_env();

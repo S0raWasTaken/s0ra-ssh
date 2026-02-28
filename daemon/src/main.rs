@@ -1,4 +1,3 @@
-#![warn(clippy::pedantic, clippy::allow_attributes)]
 use std::{
     env,
     fmt::Display,
@@ -9,7 +8,7 @@ use std::{
 };
 
 use dirs::config_dir;
-use libssh0::DropGuard;
+use libssh0::{DropGuard, break_if};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
@@ -30,15 +29,6 @@ use tokio_rustls::{
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
-
-/// Expects Result<T, E>
-macro_rules! break_if {
-    ($x:expr) => {
-        if $x {
-            break;
-        }
-    };
-}
 
 #[tokio::main]
 async fn main() -> Res<()> {
@@ -80,7 +70,7 @@ type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
 // I might have to leak some memory... :)
 fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     let config_dir =
-        config_dir().ok_or("Config dir not found")?.join("s0ra-sshd");
+        config_dir().ok_or("Config dir not found")?.join("ssh0-daemon");
 
     create_dir_all(&config_dir)?;
 

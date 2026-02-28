@@ -52,7 +52,7 @@ impl ServerCertVerifier for FingerprintCheck {
 
         let db = config_dir()
             .map(|config| {
-                let path = config.join("s0ra-ssh/known_hosts");
+                let path = config.join("ssh0/known_hosts");
                 create_dir_all(path.parent().unwrap())
                     .map_err(into_other)?;
                 FileDatabase::<HashMap<Host, Fingerprint>, Yaml>::load_from_path_or_default(
@@ -124,10 +124,7 @@ impl ServerCertVerifier for FingerprintCheck {
                 println!(
                     "Accepted!\nSaved new host to {}\n",
                     // Should be safe, if db exists, it must mean that the config_dir must too.
-                    config_dir()
-                        .unwrap()
-                        .join("s0ra-ssh/known_hosts")
-                        .display()
+                    config_dir().unwrap().join("ssh0/known_hosts").display()
                 );
                 Ok(())
             })
