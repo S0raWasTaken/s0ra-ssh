@@ -110,6 +110,7 @@ pub async fn authenticate(
     }
 
     stream.write_all(&[1]).await?;
+    stream.flush().await?;
 
     Ok(())
 }
