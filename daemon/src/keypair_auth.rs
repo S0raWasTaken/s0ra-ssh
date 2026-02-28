@@ -42,7 +42,7 @@ pub fn watch_authorized_keys(path: &'static Path) -> Res<AuthorizedKeys> {
     // Leaks the watcher, so it stays alive until the daemon exits.
     Box::leak(Box::new(watcher));
 
-    todo!()
+    Ok(keys)
 }
 
 pub fn load_authorized_keys(
