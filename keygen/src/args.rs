@@ -19,7 +19,6 @@ fn default_config_path() -> PathBuf {
 impl From<KeypairType> for Algorithm {
     fn from(val: KeypairType) -> Self {
         match val {
-            KeypairType::Dsa => Self::Dsa,
             KeypairType::Ed25519 => Self::Ed25519,
             KeypairType::Rsa512 => {
                 Self::Rsa { hash: Some(ssh_key::HashAlg::Sha512) }
@@ -33,7 +32,6 @@ impl From<KeypairType> for Algorithm {
 
 #[derive(Default, Debug)]
 pub enum KeypairType {
-    Dsa,
     #[default]
     Ed25519,
     Rsa512,
@@ -43,7 +41,6 @@ pub enum KeypairType {
 impl FromArgValue for KeypairType {
     fn from_arg_value(value: &str) -> Result<Self, String> {
         match &*value.to_lowercase() {
-            "dsa" => Ok(KeypairType::Dsa),
             "ed" | "ed25519" => Ok(KeypairType::Ed25519),
             "rsa" | "rsa512" => Ok(KeypairType::Rsa512),
             "rsa256" => Ok(KeypairType::Rsa256),
@@ -55,7 +52,7 @@ impl FromArgValue for KeypairType {
 /// Generates a new authentication key for ssh0.
 #[derive(FromArgs, Debug)]
 pub struct Args {
-    /// accepted values: rsa, rsa256, rsa512, ed, ed25519, dsa
+    /// accepted values: rsa, rsa256, rsa512, ed, ed25519
     #[argh(option, short = 't', default = "KeypairType::default()")]
     pub r#type: KeypairType,
 
