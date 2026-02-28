@@ -15,6 +15,7 @@ ssh-key = { version = "0.6.7", features = ["rsa", "ed25519"] }
 rand = "0.10.0"
 dashmap = "6.1.0"
 argh = "0.1.14"
+notify = "8.2.0"
 
 [lints]
 workspace = true
