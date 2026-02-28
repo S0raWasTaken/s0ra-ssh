@@ -2,8 +2,9 @@
 use std::{
     env,
     fmt::Display,
-    fs::File,
+    fs::{self, File, create_dir_all},
     io::{BufReader, Read, Write},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -15,7 +16,9 @@ impl Drop for ChildGuard {
     }
 }
 
+use dirs::config_dir;
 use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
+use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
@@ -24,7 +27,13 @@ use tokio::{
     sync::mpsc::{Receiver, Sender, channel},
     task::spawn_blocking,
 };
-use tokio_rustls::{TlsAcceptor, rustls::ServerConfig};
+use tokio_rustls::{
+    TlsAcceptor,
+    rustls::{
+        ServerConfig,
+        pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
+    },
+};
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
@@ -64,17 +73,54 @@ fn print_err<E: Display>(e: &E) {
 }
 
 fn make_acceptor() -> Res<TlsAcceptor> {
-    let certs = certs(&mut BufReader::new(File::open("server.pem")?))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let key = private_key(&mut BufReader::new(File::open("key.pem")?))?
-        .ok_or("Private key not found")?;
+    let (certs, key) = load_from_default_or_make_new()?;
 
     Ok(TlsAcceptor::from(Arc::new(
         ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(certs, key)?,
     )))
+}
+
+type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
+
+// I might have to leak some memory... :)
+fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
+    let config_dir =
+        config_dir().ok_or("Config dir not found")?.join("s0ra-sshd");
+
+    create_dir_all(&config_dir)?;
+
+    let cert_path = config_dir.join("cert.pem");
+    let key_path = config_dir.join("key.pem");
+
+    let (cert, key) = if cert_path.exists() && key_path.exists() {
+        (
+            certs(&mut new_reader(&cert_path)?)
+                .collect::<Result<Vec<_>, _>>()?,
+            private_key(&mut new_reader(&key_path)?)?
+                .ok_or("Private key not found")?,
+        )
+    } else {
+        let pair = generate_simple_self_signed([String::from("localhost")])?;
+        let key_pem = pair.signing_key.serialize_pem();
+        let cert_pem = pair.cert.pem();
+
+        fs::write(cert_path, cert_pem)?;
+        fs::write(key_path, key_pem)?;
+
+        (
+            vec![CertificateDer::from(pair.cert)],
+            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+                pair.signing_key.serialize_der(),
+            )),
+        )
+    };
+    Ok((cert, key))
+}
+
+fn new_reader(file: &PathBuf) -> Res<BufReader<File>> {
+    Ok(BufReader::new(File::open(file)?))
 }
 
 async fn handle_client_connection<S>(socket: S) -> Res<()>
