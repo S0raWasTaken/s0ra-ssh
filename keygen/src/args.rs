@@ -1,20 +1,7 @@
 use std::path::PathBuf;
 
 use argh::{FromArgValue, FromArgs};
-use dirs::config_dir;
 use ssh_key::Algorithm;
-
-fn default_config_path() -> PathBuf {
-    let config_path = config_dir();
-    if let Some(config_dir) = config_path {
-        config_dir.join("ssh0")
-    } else {
-        eprintln!(
-            "Couldn't find the default config dir for your OS. Try passing an --output value"
-        );
-        std::process::exit(1);
-    }
-}
 
 impl From<KeypairType> for Algorithm {
     fn from(val: KeypairType) -> Self {
@@ -57,6 +44,6 @@ pub struct Args {
     pub r#type: KeypairType,
 
     /// output path. Defaults to OS-specific config dir
-    #[argh(option, short = 'o', default = "default_config_path()")]
-    pub output: PathBuf,
+    #[argh(option, short = 'o')]
+    pub output: Option<PathBuf>,
 }

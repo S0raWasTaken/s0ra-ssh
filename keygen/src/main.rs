@@ -1,6 +1,10 @@
-use std::{fs::create_dir_all, path::Path};
+use std::{
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 use args::Args;
+use dirs::config_dir;
 use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
 
 mod args;
@@ -12,10 +16,12 @@ fn main() -> Res<()> {
     let args: Args = argh::from_env();
     println!("{args:#?}");
 
+    let output_path = args.output.unwrap_or_else(default_config_path);
+
     let pair = make_key_pair(args.r#type.into())?;
-    create_dir_all(&args.output)?;
-    println!("Saving to {}...", args.output.display());
-    save(pair, &args.output)
+    create_dir_all(&output_path)?;
+    println!("Saving to {}...", output_path.display());
+    save(pair, &output_path)
 }
 
 fn make_key_pair(algorithm: Algorithm) -> Res<KeyPair> {
@@ -39,4 +45,16 @@ fn save((public_key, private_key): KeyPair, output: &Path) -> Res<()> {
     private_key.write_openssh_file(&priv_path, LineEnding::default())?;
     println!("Done!");
     Ok(())
+}
+
+fn default_config_path() -> PathBuf {
+    let config_path = config_dir();
+    if let Some(config_dir) = config_path {
+        config_dir.join("ssh0")
+    } else {
+        eprintln!(
+            "Couldn't find the default config dir for your OS. Try passing an --output value"
+        );
+        std::process::exit(1);
+    }
 }
