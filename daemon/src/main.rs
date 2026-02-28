@@ -42,7 +42,7 @@ async fn main() -> Res<()> {
 
     let acceptor = make_acceptor(&config_dir)?;
 
-    let rate_limiter = Arc::new(RateLimiter::new(5, Duration::from_mins(1)));
+    let rate_limiter = Arc::new(RateLimiter::new(3, Duration::from_mins(30)));
     let rl = Arc::clone(&rate_limiter);
     spawn(async move {
         loop {
