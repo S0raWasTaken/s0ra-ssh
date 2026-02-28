@@ -1,0 +1,12 @@
+[package]
+name = "ssh0-keygen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argh = "0.1.14"
+dirs = "6.0.0"
+ssh-key = { version = "0.6.7", features = ["ed25519", "rsa"] }
+
+[lints]
+workspace = true

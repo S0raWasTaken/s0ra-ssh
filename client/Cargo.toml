@@ -1,9 +1,10 @@
 [package]
-name = "s0ra-ssh"
+name = "ssh0"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+libssh0 = {path = "../utility-lib"}
 argh = "0.1.14"
 crossterm = "0.29.0"
 daybreak = { version = "0.1.0", features = ["yaml_enc"] }
@@ -12,3 +13,7 @@ hex = "0.4.3"
 sha2 = "0.10.9"
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-rustls = "0.26.4"
+ssh-key = { version = "0.6.7", features = ["rsa", "ed25519"] }
+
+[lints]
+workspace = true

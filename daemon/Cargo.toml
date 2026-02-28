@@ -1,10 +1,21 @@
 [package]
-name = "s0ra-sshd"
+name = "ssh0-daemon"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+libssh0 = {path = "../utility-lib"}
+dirs = "6.0.0"
 portable-pty = "0.9.0"
+rcgen = "0.14.7"
 rustls-pemfile = "2.2.0"
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-rustls = "0.26.4"
+ssh-key = { version = "0.6.7", features = ["rsa", "ed25519"] }
+rand = "0.10.0"
+dashmap = "6.1.0"
+argh = "0.1.14"
+notify = "8.2.0"
+
+[lints]
+workspace = true
