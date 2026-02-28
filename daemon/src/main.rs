@@ -8,16 +8,9 @@ use std::{
     sync::Arc,
 };
 
-struct ChildGuard(Box<dyn Child + Send + Sync>);
-
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        let _ = self.0.kill().inspect_err(print_err);
-    }
-}
-
 use dirs::config_dir;
-use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
+use libssh0::DropGuard;
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
 use tokio::{
@@ -138,7 +131,9 @@ where
 
     let child = pair.slave.spawn_command(cmd)?;
 
-    let _guard = ChildGuard(child);
+    let _guard = DropGuard::new(child, |child| {
+        child.kill().inspect_err(print_err).ok();
+    });
 
     drop(pair.slave);
     let reader = pair.master.try_clone_reader()?;

@@ -24,6 +24,7 @@ use tokio_rustls::{
 };
 
 use crate::fingerprint::FingerprintCheck;
+use libssh0::DropGuard;
 
 /// Expects Result<T, E>
 macro_rules! break_if {
@@ -53,13 +54,6 @@ impl FromArgValue for UserAtHost {
     }
 }
 
-struct RawModeGuard;
-impl Drop for RawModeGuard {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode();
-    }
-}
-
 /// meow
 #[derive(FromArgs)]
 struct Args {
@@ -84,7 +78,9 @@ async fn main() -> Res<()> {
     let port = args.port;
 
     enable_raw_mode()?;
-    let guard = RawModeGuard;
+    let guard = DropGuard::new((), |()| {
+        let _ = disable_raw_mode();
+    });
 
     let stream = connect_tls(&host, port).await?;
     let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);

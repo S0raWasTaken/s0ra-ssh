@@ -492,6 +492,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "libssh0"
+version = "0.1.0"
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -994,6 +998,7 @@ dependencies = [
  "daybreak",
  "dirs",
  "hex",
+ "libssh0",
  "sha2",
  "tokio",
  "tokio-rustls",
@@ -1004,6 +1009,7 @@ name = "ssh0-daemon"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "libssh0",
  "portable-pty",
  "rcgen",
  "rustls-pemfile",
