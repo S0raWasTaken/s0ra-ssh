@@ -1,32 +1,19 @@
-use argh::{FromArgValue, FromArgs};
+use std::path::PathBuf;
 
-pub struct UserAtHost {
-    #[expect(dead_code)]
-    user: String,
-    pub host: String,
-}
+use argh::FromArgs;
 
-const INVALID_ARG: &str = "Invalid first argument, expected user@host";
-
-impl FromArgValue for UserAtHost {
-    // user@host expected
-    fn from_arg_value(value: &str) -> Result<Self, String> {
-        let mut split = value.split('@');
-
-        let user = split.next().ok_or(INVALID_ARG)?.to_string();
-        let host = split.next().ok_or(INVALID_ARG)?.to_string();
-        Ok(Self { user, host })
-    }
-}
-
-/// meow
+/// Connect to a remote host via ssh0
 #[derive(FromArgs)]
 pub struct Args {
-    /// meow
+    /// the remote host to connect to
     #[argh(positional)]
-    pub user_at_host: UserAtHost,
+    pub host: String,
 
-    /// meow
+    /// port to connect to (default: 2121)
     #[argh(option, default = "2121")]
     pub port: u16,
+
+    /// private key path, tries to load from config folder by default
+    #[argh(option, short = 'i')]
+    pub key_path: Option<PathBuf>,
 }

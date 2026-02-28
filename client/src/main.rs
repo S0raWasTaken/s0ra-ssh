@@ -1,17 +1,20 @@
 use std::{
     error::Error,
-    io::{ErrorKind::UnexpectedEof, Read, Write, stdin, stdout},
+    io::{ErrorKind::UnexpectedEof, Write, stdout},
+    path::PathBuf,
     process::exit,
     sync::Arc,
     time::Duration,
 };
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use dirs::config_dir;
+use ssh_key::{LineEnding, PrivateKey};
 use tokio::{
-    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
     net::TcpStream,
     spawn,
-    sync::mpsc::{Receiver, Sender, channel},
+    sync::mpsc::{Receiver, channel},
     task::spawn_blocking,
 };
 use tokio_rustls::{
@@ -20,7 +23,9 @@ use tokio_rustls::{
     rustls::{ClientConfig, pki_types::ServerName},
 };
 
-use crate::{args::Args, fingerprint::FingerprintCheck};
+use crate::{
+    args::Args, fingerprint::FingerprintCheck, read_stdin::read_stdin,
+};
 use libssh0::{DropGuard, break_if};
 
 type BoxedError = Box<dyn Error + Send + Sync>;
@@ -28,18 +33,22 @@ type Res<T> = Result<T, BoxedError>;
 
 mod args;
 mod fingerprint;
+mod read_stdin;
+
 #[tokio::main]
 async fn main() -> Res<()> {
-    let args: Args = argh::from_env();
-    let host = args.user_at_host.host;
-    let port = args.port;
+    let Args { host, port, key_path } = argh::from_env();
 
     enable_raw_mode()?;
     let guard = DropGuard::new((), |()| {
         let _ = disable_raw_mode();
     });
 
-    let stream = connect_tls(&host, port).await?;
+    let mut stream = connect_tls(&host, port).await?;
+
+    let private_key = load_private_key(key_path)?;
+    authenticate(&mut stream, private_key).await?;
+
     let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
     let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
 
@@ -78,23 +87,50 @@ async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
     Ok(timeout(connector.connect(domain, tcp)).await??)
 }
 
+const POSSIBLE_PATHS: [&str; 3] = ["id_ed25519", "id_rsa", "id_dsa"];
+fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
+    if let Some(private_key_path) = key_path {
+        Ok(PrivateKey::read_openssh_file(&private_key_path)?)
+    } else {
+        let config_dir =
+            config_dir().ok_or("Config dir not found")?.join("ssh0");
+        let key_path = POSSIBLE_PATHS.iter().find(|entry| {
+            config_dir.join(entry).exists()
+        }).ok_or("No private keys found in the config directory. Try generating a new key pair using `ssh0-keygen`")?;
+
+        Ok(PrivateKey::read_openssh_file(&config_dir.join(key_path))?)
+    }
+}
+
+async fn authenticate(
+    stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
+    private_key: PrivateKey,
+) -> Res<()> {
+    let mut challenge = [0u8; 32];
+    stream.read_exact(&mut challenge).await?;
+
+    let signature = private_key
+        .sign("ssh0-auth", ssh_key::HashAlg::Sha512, &challenge)?
+        .to_pem(LineEnding::default())?;
+    let signature_bytes = signature.as_bytes();
+
+    #[expect(clippy::cast_possible_truncation)]
+    stream.write_all(&(signature_bytes.len() as u32).to_be_bytes()).await?;
+    stream.write_all(signature_bytes).await?;
+
+    let mut result = [0u8];
+    stream.read_exact(&mut result).await?;
+    if result[0] != 1 {
+        return Err("Authentication failed".into());
+    }
+
+    Ok(())
+}
+
 async fn timeout<F: IntoFuture>(
     f: F,
 ) -> Result<F::Output, tokio::time::error::Elapsed> {
     tokio::time::timeout(Duration::from_secs(10), f).await
-}
-
-#[expect(clippy::needless_pass_by_value)]
-fn read_stdin(tx: Sender<Vec<u8>>) {
-    let mut buf = [0u8; 1024];
-    loop {
-        match stdin().read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => {
-                break_if!(tx.blocking_send(buf[..n].to_vec()).is_err());
-            }
-        }
-    }
 }
 
 async fn forward_to_server<S: AsyncWrite>(

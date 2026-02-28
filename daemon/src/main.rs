@@ -3,7 +3,9 @@ use std::{
     fmt::Display,
     fs::{self, File, create_dir_all},
     io::{BufReader, Read, Write},
+    net::SocketAddr,
     path::PathBuf,
+    process::exit,
     sync::Arc,
 };
 
@@ -12,9 +14,10 @@ use libssh0::{DropGuard, break_if};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
+use ssh_key::{AuthorizedKeys, PublicKey, SshSig};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     select, spawn,
     sync::mpsc::{Receiver, Sender, channel},
     task::spawn_blocking,
@@ -25,6 +28,7 @@ use tokio_rustls::{
         ServerConfig,
         pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
     },
+    server::TlsStream,
 };
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
@@ -32,23 +36,101 @@ pub type Res<T> = Result<T, BoxedError>;
 
 #[tokio::main]
 async fn main() -> Res<()> {
+    let config_dir =
+        config_dir().ok_or("Couldn't find the config directory")?;
+
+    create_dir_all(&config_dir)?;
+
+    let authorized_keys_path = config_dir.join("ssh0-daemon/authorized_keys");
+
+    if !authorized_keys_path.exists() {
+        eprintln!(
+            "Please populate your authorized_keys file at {}",
+            authorized_keys_path.display()
+        );
+        exit(1);
+    }
+
+    let authorized_keys = AuthorizedKeys::read_file(&authorized_keys_path)?
+        .iter()
+        .map(|e| e.public_key().clone())
+        .collect::<Vec<_>>()
+        .leak();
+
+    if authorized_keys.is_empty() {
+        return Err(format!(
+            "authorized_keys file is empty, please add a public key at {}",
+            authorized_keys_path.display()
+        )
+        .into());
+    }
+
+    dbg!(&authorized_keys);
+
     let listener = TcpListener::bind("127.0.0.1:2121").await?;
     println!("Listening on 2121");
 
     let acceptor = make_acceptor()?;
 
     loop {
-        let (socket, address) = listener.accept().await?;
-        println!("{address} Connected!");
-        let acceptor = acceptor.clone();
+        let (stream, address) = listener.accept().await?;
+        println!("Sending challenge to {address}");
 
-        spawn(async move {
-            let socket =
-                acceptor.accept(socket).await.inspect_err(print_err)?;
-
-            handle_client_connection(socket).await.inspect_err(print_err)
-        });
+        spawn(authenticate_and_accept_connection(
+            stream,
+            address,
+            authorized_keys,
+            acceptor.clone(),
+        ));
     }
+}
+
+async fn authenticate_and_accept_connection(
+    stream: TcpStream,
+    address: SocketAddr,
+    authorized_keys: &[PublicKey],
+    acceptor: TlsAcceptor,
+) -> Res<()> {
+    let mut socket = acceptor.accept(stream).await.inspect_err(print_err)?;
+
+    authenticate(&mut socket, authorized_keys).await.inspect_err(|e| {
+        eprintln!("Signature verification failed for {address}");
+        eprintln!("{e}");
+    })?;
+
+    println!("Authorized!");
+
+    handle_client_connection(socket).await.inspect_err(print_err)?;
+    Ok(())
+}
+
+async fn authenticate(
+    stream: &mut TlsStream<TcpStream>,
+    authorized_keys: &[PublicKey],
+) -> Res<()> {
+    let challenge = rand::random::<[u8; 32]>();
+    stream.write_all(&challenge).await?;
+
+    let mut signature_length_reader = [0u8; 4];
+    stream.read_exact(&mut signature_length_reader).await?;
+    let signature_length = u32::from_be_bytes(signature_length_reader) as usize;
+
+    let mut signature_bytes = vec![0u8; signature_length];
+    stream.read_exact(&mut signature_bytes).await?;
+
+    let signature = SshSig::from_pem(signature_bytes)?;
+
+    if !authorized_keys
+        .iter()
+        .any(|entry| entry.verify("ssh0-auth", &challenge, &signature).is_ok())
+    {
+        stream.write_all(&[0]).await?;
+        return Err("Unauthorized".into());
+    }
+
+    stream.write_all(&[1]).await?;
+
+    Ok(())
 }
 
 fn print_err<E: Display>(e: &E) {

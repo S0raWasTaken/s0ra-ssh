@@ -11,6 +11,8 @@ rcgen = "0.14.7"
 rustls-pemfile = "2.2.0"
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-rustls = "0.26.4"
+ssh-key = { version = "0.6.7", features = ["rsa", "ed25519", "dsa"] }
+rand = "0.10.0"
 
 [lints]
 workspace = true

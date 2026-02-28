@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fs::create_dir_all, path::Path};
 
 use args::Args;
 use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
@@ -13,6 +13,8 @@ fn main() -> Res<()> {
     println!("{args:#?}");
 
     let pair = make_key_pair(args.r#type.into())?;
+    create_dir_all(&args.output)?;
+    println!("Saving to {}...", args.output.display());
     save(pair, &args.output)
 }
 
@@ -35,5 +37,6 @@ fn save((public_key, private_key): KeyPair, output: &Path) -> Res<()> {
 
     public_key.write_openssh_file(&pub_path)?;
     private_key.write_openssh_file(&priv_path, LineEnding::default())?;
+    println!("Done!");
     Ok(())
 }
