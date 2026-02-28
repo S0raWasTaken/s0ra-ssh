@@ -166,7 +166,11 @@ fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
                 .ok_or("Private key not found")?,
         )
     } else {
-        let pair = generate_simple_self_signed([String::from("localhost")])?;
+        let pair = generate_simple_self_signed([
+            String::from("localhost"),
+            String::from("127.0.0.1"),
+            String::from("::1"),
+        ])?;
         let key_pem = pair.signing_key.serialize_pem();
         let cert_pem = pair.cert.pem();
 
