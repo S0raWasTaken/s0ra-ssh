@@ -78,7 +78,7 @@ async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
             .with_no_client_auth(),
     ));
 
-    let tcp = timeout(TcpStream::connect(format!("{host}:{port}"))).await??;
+    let tcp = timeout(TcpStream::connect((host, port))).await??;
 
     let domain = ServerName::try_from(host.to_string())?;
 
