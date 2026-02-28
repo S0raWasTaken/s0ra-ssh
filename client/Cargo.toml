@@ -1,5 +1,5 @@
 [package]
-name = "s0ra-ssh"
+name = "ssh0"
 version = "0.1.0"
 edition = "2024"
 

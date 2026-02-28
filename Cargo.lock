@@ -840,32 +840,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
-name = "s0ra-ssh"
-version = "0.1.0"
-dependencies = [
- "argh",
- "crossterm",
- "daybreak",
- "dirs",
- "hex",
- "sha2",
- "tokio",
- "tokio-rustls",
-]
-
-[[package]]
-name = "s0ra-sshd"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "portable-pty",
- "rcgen",
- "rustls-pemfile",
- "tokio",
- "tokio-rustls",
-]
-
-[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1009,6 +983,32 @@ checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "ssh0"
+version = "0.1.0"
+dependencies = [
+ "argh",
+ "crossterm",
+ "daybreak",
+ "dirs",
+ "hex",
+ "sha2",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
+name = "ssh0-daemon"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "portable-pty",
+ "rcgen",
+ "rustls-pemfile",
+ "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

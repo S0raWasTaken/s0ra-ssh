@@ -1,5 +1,5 @@
 [package]
-name = "s0ra-sshd"
+name = "ssh0-daemon"
 version = "0.1.0"
 edition = "2024"
 
