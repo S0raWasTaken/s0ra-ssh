@@ -15,16 +15,17 @@ impl RateLimiter {
         Self { attempts: DashMap::new(), max_attempts, window }
     }
 
-    pub fn is_allowed(&self, ip: IpAddr) -> bool {
+    pub fn increment(&self, ip: IpAddr) {
         let now = Instant::now();
         let mut entry = self.attempts.entry(ip).or_insert((0, now));
-
         if now.duration_since(entry.1) > self.window {
             *entry = (0, now);
         }
-
         entry.0 += 1;
-        entry.0 <= self.max_attempts
+    }
+
+    pub fn is_allowed(&self, ip: IpAddr) -> bool {
+        self.attempts.get(&ip).is_none_or(|entry| entry.0 < self.max_attempts)
     }
 
     pub fn cleanup(&self) {

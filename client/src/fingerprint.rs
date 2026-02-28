@@ -156,8 +156,6 @@ impl ServerCertVerifier for FingerprintCheck {
     }
 }
 
-// fn write_accepted(fingerprint: &str)
-
 fn request_confirmation(message: &str) -> Result<bool, rustls::Error> {
     print!("{message} [Y/N] ");
     stdout().flush().map_err(into_other)?;

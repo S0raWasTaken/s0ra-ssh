@@ -25,7 +25,7 @@ pub fn make_acceptor(config_dir: &Path) -> Res<TlsAcceptor> {
     )))
 }
 
-pub type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
+type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
 
 pub fn load_from_default_or_make_new(
     config_dir: &Path,

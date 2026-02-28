@@ -1,6 +1,8 @@
 use super::{Res, print_err};
-use crate::{BoxedError, connection::handle_client_connection};
-use libssh0::timeout;
+use crate::{
+    BoxedError, connection::handle_client_connection, rate_limit::RateLimiter,
+};
+use libssh0::{log, timeout};
 use notify::{
     Event, EventKind, RecursiveMode::NonRecursive, Watcher, recommended_watcher,
 };
@@ -59,14 +61,20 @@ pub async fn authenticate_and_accept_connection(
     address: SocketAddr,
     authorized_keys: Arc<[PublicKey]>,
     acceptor: TlsAcceptor,
+    rate_limiter: Arc<RateLimiter>,
 ) -> Res<()> {
-    let mut socket = timeout(acceptor.accept(stream)).await??;
+    let socket = async move {
+        let mut socket = timeout(acceptor.accept(stream)).await??;
 
-    timeout(authenticate(&mut socket, &authorized_keys)).await?.inspect_err(
-        |_| {
-            eprintln!("Signature verification failed for {address}");
-        },
-    )?;
+        timeout(authenticate(&mut socket, &authorized_keys))
+            .await?
+            .inspect_err(|_| {
+                log!(e "Signature verification failed for {address}");
+            })?;
+        Ok::<_, BoxedError>(socket)
+    }
+    .await
+    .inspect_err(|_| rate_limiter.increment(address.ip()))?;
 
     println!("Authorized connection from {address}");
 

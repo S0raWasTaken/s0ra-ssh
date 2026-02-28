@@ -4,8 +4,11 @@ use crate::{
     rate_limit::RateLimiter,
     tls::make_acceptor,
 };
+use libssh0::log;
 use std::{fmt::Display, fs::create_dir_all, sync::Arc, time::Duration};
-use tokio::{io::AsyncWriteExt, net::TcpListener, spawn, time::sleep};
+use tokio::{
+    io::AsyncWriteExt, net::TcpListener, spawn, sync::Semaphore, time::sleep,
+};
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
@@ -34,8 +37,8 @@ async fn main() -> Res<()> {
     let authorized_keys_path = config_dir.join("authorized_keys").leak();
     let authorized_keys = watch_authorized_keys(authorized_keys_path)?;
 
-    let listener = TcpListener::bind(format!("{host}:{port}",)).await?;
-    println!("Listening on {host}:{port}");
+    let listener = TcpListener::bind((&*host, port)).await?;
+    log!("Listening on {host}:{port}");
 
     let acceptor = make_acceptor(&config_dir)?;
 
@@ -48,23 +51,35 @@ async fn main() -> Res<()> {
         }
     });
 
+    let semaphore = Arc::new(Semaphore::new(100));
+
     loop {
         let (mut stream, address) = listener.accept().await?;
+
+        let Ok(permit) = Arc::clone(&semaphore).try_acquire_owned() else {
+            stream.shutdown().await.ok();
+            continue;
+        };
+
         if !rate_limiter.is_allowed(address.ip()) {
             stream.shutdown().await.ok();
             continue;
         }
 
-        println!("Sending challenge to {address}");
+        log!(e "Sending challenge to {address}");
 
         let authorized_keys = authorized_keys.read().unwrap().clone();
         let acceptor = acceptor.clone();
+        let rate_limiter = Arc::clone(&rate_limiter);
+
         spawn(async move {
+            let _permit = permit;
             authenticate_and_accept_connection(
                 stream,
                 address,
                 authorized_keys,
                 acceptor,
+                rate_limiter,
             )
             .await
             .inspect_err(print_err)
@@ -73,5 +88,5 @@ async fn main() -> Res<()> {
 }
 
 fn print_err<E: Display>(e: &E) {
-    eprintln!("{e}");
+    log!(e "{e}");
 }

@@ -1,5 +1,18 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+/// A guard that runs a closure on drop, useful for cleanup logic.
+///
+/// The closure is protected with [`std::panic::catch_unwind`] so panics
+/// inside it do not propagate — this is safe for the current use cases
+/// (killing child processes, disabling raw mode) since they don't access
+/// shared state that could be left inconsistent.
+///
+/// # Example
+/// ```
+/// let _guard = DropGuard::new(child, |child| {
+///     child.kill().ok();
+/// });
+/// ```
 pub struct DropGuard<T, F: Fn(&mut T)> {
     object: T,
     run_on_drop: F,

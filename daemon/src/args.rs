@@ -6,7 +6,7 @@ use argh::FromArgs;
 /// two untrusted hosts over an insecure network.
 #[derive(FromArgs)]
 pub struct Args {
-    #[argh(positional, default = "String::from(\"0.0.0.0\")")]
+    #[argh(positional, default = "String::from(\"127.0.0.1\")")]
     pub host: String,
 
     /// specifies the port which ssh0-daemon will bind itself to
