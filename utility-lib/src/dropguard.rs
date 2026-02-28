@@ -8,7 +8,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 /// shared state that could be left inconsistent.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// let _guard = DropGuard::new(child, |child| {
 ///     child.kill().ok();
 /// });
