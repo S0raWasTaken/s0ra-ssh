@@ -67,7 +67,6 @@ fn make_acceptor() -> Res<TlsAcceptor> {
 
 type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
 
-// I might have to leak some memory... :)
 fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     let config_dir =
         config_dir().ok_or("Config dir not found")?.join("ssh0-daemon");
