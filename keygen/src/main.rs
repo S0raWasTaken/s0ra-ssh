@@ -31,7 +31,6 @@ fn make_key_pair(algorithm: Algorithm) -> Res<KeyPair> {
 
 fn save((public_key, private_key): KeyPair, output: &Path) -> Res<()> {
     let algorithm = match private_key.algorithm() {
-        Algorithm::Dsa => "id_dsa",
         Algorithm::Ed25519 => "id_ed25519",
         Algorithm::Rsa { .. } => "id_rsa",
         _ => unreachable!(), // Ensured by Algorithm::from<KeyPairType>

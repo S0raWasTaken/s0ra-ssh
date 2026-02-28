@@ -4,13 +4,13 @@ use std::{
     fs::{self, File, create_dir_all},
     io::{BufReader, Read, Write},
     net::SocketAddr,
-    path::PathBuf,
-    process::exit,
+    path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use dirs::config_dir;
-use libssh0::{DropGuard, break_if};
+use libssh0::{DropGuard, break_if, timeout};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
@@ -21,6 +21,7 @@ use tokio::{
     select, spawn,
     sync::mpsc::{Receiver, Sender, channel},
     task::spawn_blocking,
+    time::sleep,
 };
 use tokio_rustls::{
     TlsAcceptor,
@@ -31,8 +32,12 @@ use tokio_rustls::{
     server::TlsStream,
 };
 
+use crate::rate_limit::RateLimiter;
+
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
+
+mod rate_limit;
 
 #[tokio::main]
 async fn main() -> Res<()> {
@@ -43,39 +48,34 @@ async fn main() -> Res<()> {
 
     let authorized_keys_path = config_dir.join("ssh0-daemon/authorized_keys");
 
-    if !authorized_keys_path.exists() {
-        eprintln!(
-            "Please populate your authorized_keys file at {}",
-            authorized_keys_path.display()
-        );
-        exit(1);
-    }
-
-    let authorized_keys = AuthorizedKeys::read_file(&authorized_keys_path)?
-        .iter()
-        .map(|e| e.public_key().clone())
-        .collect::<Vec<_>>()
-        .leak();
-
-    if authorized_keys.is_empty() {
-        return Err(format!(
-            "authorized_keys file is empty, please add a public key at {}",
-            authorized_keys_path.display()
-        )
-        .into());
-    }
-
-    dbg!(&authorized_keys);
-
     let listener = TcpListener::bind("127.0.0.1:2121").await?;
     println!("Listening on 2121");
 
     let acceptor = make_acceptor()?;
 
+    let rate_limiter = Arc::new(RateLimiter::new(5, Duration::from_mins(1)));
+    let rl = Arc::clone(&rate_limiter);
+    spawn(async move {
+        loop {
+            sleep(Duration::from_mins(5)).await;
+            rl.cleanup(Duration::from_mins(5));
+        }
+    });
+
     loop {
-        let (stream, address) = listener.accept().await?;
+        let (mut stream, address) = listener.accept().await?;
+        if !rate_limiter.is_allowed(address.ip()) {
+            stream.shutdown().await.ok();
+            continue;
+        }
+
         println!("Sending challenge to {address}");
 
+        let authorized_keys = load_authorized_keys(&authorized_keys_path)
+            .unwrap_or_else(|e| {
+                eprintln!("{e}");
+                Vec::new()
+            });
         spawn(authenticate_and_accept_connection(
             stream,
             address,
@@ -85,18 +85,27 @@ async fn main() -> Res<()> {
     }
 }
 
+fn load_authorized_keys(authorized_keys_path: &Path) -> Res<Vec<PublicKey>> {
+    Ok(AuthorizedKeys::read_file(authorized_keys_path)?
+        .iter()
+        .map(|e| e.public_key().clone())
+        .collect::<Vec<_>>())
+}
+
 async fn authenticate_and_accept_connection(
     stream: TcpStream,
     address: SocketAddr,
-    authorized_keys: &[PublicKey],
+    authorized_keys: Vec<PublicKey>,
     acceptor: TlsAcceptor,
 ) -> Res<()> {
     let mut socket = acceptor.accept(stream).await.inspect_err(print_err)?;
 
-    authenticate(&mut socket, authorized_keys).await.inspect_err(|e| {
-        eprintln!("Signature verification failed for {address}");
-        eprintln!("{e}");
-    })?;
+    timeout(authenticate(&mut socket, &authorized_keys)).await?.inspect_err(
+        |e| {
+            eprintln!("Signature verification failed for {address}");
+            eprintln!("{e}");
+        },
+    )?;
 
     println!("Authorized!");
 

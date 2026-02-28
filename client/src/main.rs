@@ -4,7 +4,6 @@ use std::{
     path::PathBuf,
     process::exit,
     sync::Arc,
-    time::Duration,
 };
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
@@ -26,7 +25,7 @@ use tokio_rustls::{
 use crate::{
     args::Args, fingerprint::FingerprintCheck, read_stdin::read_stdin,
 };
-use libssh0::{DropGuard, break_if};
+use libssh0::{DropGuard, break_if, timeout};
 
 type BoxedError = Box<dyn Error + Send + Sync>;
 type Res<T> = Result<T, BoxedError>;
@@ -87,7 +86,7 @@ async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
     Ok(timeout(connector.connect(domain, tcp)).await??)
 }
 
-const POSSIBLE_PATHS: [&str; 3] = ["id_ed25519", "id_rsa", "id_dsa"];
+const POSSIBLE_PATHS: [&str; 2] = ["id_ed25519", "id_rsa"];
 fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
     if let Some(private_key_path) = key_path {
         Ok(PrivateKey::read_openssh_file(&private_key_path)?)
@@ -125,12 +124,6 @@ async fn authenticate(
     }
 
     Ok(())
-}
-
-async fn timeout<F: IntoFuture>(
-    f: F,
-) -> Result<F::Output, tokio::time::error::Elapsed> {
-    tokio::time::timeout(Duration::from_secs(10), f).await
 }
 
 async fn forward_to_server<S: AsyncWrite>(
