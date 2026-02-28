@@ -54,7 +54,6 @@ pub async fn authenticate(
     let signature_length = u32::from_be_bytes(signature_length_reader) as usize;
 
     if signature_length > 4096 {
-        stream.read_exact(&mut [0]).await?;
         stream.write_all(&[0]).await?;
         stream.shutdown().await?;
         return Err("Signature too large".into());

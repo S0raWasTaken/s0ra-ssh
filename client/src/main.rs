@@ -36,6 +36,8 @@ mod read_stdin;
 async fn main() -> Res<()> {
     let Args { host, port, key_path } = argh::from_env();
 
+    let private_key = load_private_key(key_path)?;
+
     enable_raw_mode()?;
     let guard = DropGuard::new((), |()| {
         let _ = disable_raw_mode();
@@ -43,8 +45,7 @@ async fn main() -> Res<()> {
 
     let mut stream = connect_tls(&host, port).await?;
 
-    let private_key = load_private_key(key_path)?;
-    authenticate(&mut stream, private_key).await?;
+    timeout(authenticate(&mut stream, private_key)).await??;
 
     let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
     let (stdin_tx, stdin_rx) = channel::<Vec<u8>>(32);
@@ -94,6 +95,20 @@ fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
         let key_path = POSSIBLE_PATHS.iter().find(|entry| {
             config_dir.join(entry).exists()
         }).ok_or("No private keys found in the config directory. Try generating a new key pair using `ssh0-keygen`")?;
+
+        #[cfg(unix)]
+        {
+            use std::{fs, os::unix::fs::PermissionsExt};
+
+            let mode = fs::metadata(&key_path)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                return Err(format!(
+                "Private key {} has too permissive permissions ({:o}), expected at most (600)",
+                key_path,
+                mode & 0o777
+            ).into());
+            }
+        }
 
         Ok(PrivateKey::read_openssh_file(&config_dir.join(key_path))?)
     }

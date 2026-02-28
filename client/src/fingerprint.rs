@@ -59,33 +59,31 @@ impl ServerCertVerifier for FingerprintCheck {
                 )
                 .map_err(into_other)
             })
-            .transpose()?;
+            .transpose()?.ok_or_else(|| {
+                rustls::Error::General("Config dir unavailable; \
+                refusing fingerprint trust without persistence".to_string())
+            })?;
 
         let mut fingerprint_mismatch = false;
 
-        let is_known_host = db
-            .as_ref()
-            .map(|db| -> Result<Option<String>, daybreak::Error> {
-                let mut db = db.get_data(false)?; // No need to double load
-                Ok(db.remove(&server_name.to_string()))
-            })
-            .transpose()
-            .map_err(into_other)?
-            .flatten()
-            .is_some_and(|known_fingerprint| {
-                let matches = known_fingerprint == fingerprint;
+        let is_known_host = {
+            let mut data = db.get_data(false).map_err(into_other)?; // No need to double load
+            data.remove(&server_name.to_string())
+        }
+        .is_some_and(|known_fingerprint| {
+            let matches = known_fingerprint == fingerprint;
 
-                if !matches {
-                    eprintln!(
-                        "{FINGERPRINT_MISMATCH}\n  \
+            if !matches {
+                eprintln!(
+                    "{FINGERPRINT_MISMATCH}\n  \
                             host:       {server_name}\n  \
                             expected:   {known_fingerprint}\n  \
                             found:      {RED}{fingerprint}{RESET}"
-                    );
-                }
-                fingerprint_mismatch = !matches;
-                matches
-            });
+                );
+            }
+            fingerprint_mismatch = !matches;
+            matches
+        });
 
         if !is_known_host && !fingerprint_mismatch {
             println!("The server's fingerprint is {fingerprint}");
@@ -109,26 +107,17 @@ impl ServerCertVerifier for FingerprintCheck {
         }
 
         if !is_known_host {
-            db.map(|db| -> Result<(), daybreak::Error> {
-                #[expect(
-                    clippy::excessive_nesting,
-                    reason = "Not worth refactoring"
-                )]
-                {
-                    let mut data = db.borrow_data_mut()?;
-                    data.insert(server_name.to_string(), fingerprint);
-                }
+            {
+                let mut data = db.borrow_data_mut().map_err(into_other)?;
+                data.insert(server_name.to_string(), fingerprint);
+            }
 
-                db.save()?;
-                println!(
-                    "Accepted!\nSaved new host to {}\n",
-                    // Should be safe, if db exists, it must mean that the config_dir must too.
-                    config_dir().unwrap().join("ssh0/known_hosts").display()
-                );
-                Ok(())
-            })
-            .transpose()
-            .map_err(into_other)?;
+            db.save().map_err(into_other)?;
+            println!(
+                "Accepted!\nSaved new host to {}\n",
+                // Should be safe, if db exists, it must mean that the config_dir must too.
+                config_dir().unwrap().join("ssh0/known_hosts").display()
+            );
         }
 
         Ok(ServerCertVerified::assertion())

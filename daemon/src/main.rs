@@ -1,15 +1,16 @@
 use crate::{
+    args::Args,
     keypair_auth::{authenticate_and_accept_connection, load_authorized_keys},
     rate_limit::RateLimiter,
     tls::make_acceptor,
 };
-use dirs::config_dir;
 use std::{fmt::Display, fs::create_dir_all, sync::Arc, time::Duration};
 use tokio::{io::AsyncWriteExt, net::TcpListener, spawn, time::sleep};
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
 
+mod args;
 mod connection;
 mod keypair_auth;
 mod rate_limit;
@@ -17,14 +18,20 @@ mod tls;
 
 #[tokio::main]
 async fn main() -> Res<()> {
-    let config_dir =
-        config_dir().ok_or("Couldn't find the config directory")?;
+    let args: Args = argh::from_env();
+    let Args { host, port, .. } = args;
+
+    let config_dir = args
+        .config_dir
+        .or_else(dirs::config_dir)
+        .map(|dir| dir.join("ssh0-daemon"))
+        .ok_or("Couldn't find the config directory.")?;
 
     create_dir_all(&config_dir)?;
 
     let authorized_keys_path = config_dir.join("ssh0-daemon/authorized_keys");
 
-    let listener = TcpListener::bind("127.0.0.1:2121").await?;
+    let listener = TcpListener::bind(format!("{host}:{port}",)).await?;
     println!("Listening on 2121");
 
     let acceptor = make_acceptor()?;
@@ -34,7 +41,7 @@ async fn main() -> Res<()> {
     spawn(async move {
         loop {
             sleep(Duration::from_mins(5)).await;
-            rl.cleanup(Duration::from_mins(5));
+            rl.cleanup();
         }
     });
 

@@ -1591,6 +1591,7 @@ dependencies = [
 name = "ssh0-daemon"
 version = "0.1.0"
 dependencies = [
+ "argh",
  "dashmap",
  "dirs",
  "libssh0",

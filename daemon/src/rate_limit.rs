@@ -27,8 +27,9 @@ impl RateLimiter {
         entry.0 <= self.max_attempts
     }
 
-    pub fn cleanup(&self, window: Duration) {
+    pub fn cleanup(&self) {
         let now = Instant::now();
-        self.attempts.retain(|_, (_, time)| now.duration_since(*time) < window);
+        self.attempts
+            .retain(|_, (_, time)| now.duration_since(*time) < self.window);
     }
 }

@@ -30,7 +30,10 @@ impl FromArgValue for KeypairType {
             "ed" | "ed25519" => Ok(KeypairType::Ed25519),
             "rsa" | "rsa512" => Ok(KeypairType::Rsa512),
             "rsa256" => Ok(KeypairType::Rsa256),
-            _ => Err("Invalid key pair type".to_string()),
+            _ => Err(format!(
+                "Invalid key pair type '{value}'. \
+                Accepted values: rsa, rsa256, rsa512, ed, ed25519"
+            )),
         }
     }
 }

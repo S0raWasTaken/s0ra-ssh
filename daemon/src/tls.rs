@@ -16,7 +16,7 @@ use tokio_rustls::{
     },
 };
 
-pub(crate) fn make_acceptor() -> Res<TlsAcceptor> {
+pub fn make_acceptor() -> Res<TlsAcceptor> {
     let (certs, key) = load_from_default_or_make_new()?;
 
     Ok(TlsAcceptor::from(Arc::new(
@@ -26,9 +26,9 @@ pub(crate) fn make_acceptor() -> Res<TlsAcceptor> {
     )))
 }
 
-pub(crate) type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
+pub type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
 
-pub(crate) fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
+pub fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     let config_dir =
         config_dir().ok_or("Config dir not found")?.join("ssh0-daemon");
 
@@ -38,6 +38,18 @@ pub(crate) fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     let key_path = config_dir.join("key.pem");
 
     let (cert, key) = if cert_path.exists() && key_path.exists() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&key_path)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                return Err(format!(
+                "Private key {} has too permissive permissions ({:o}), expected at most (600)",
+                key_path.display(),
+                mode & 0o777
+            ).into());
+            }
+        }
         (
             certs(&mut new_reader(&cert_path)?)
                 .collect::<Result<Vec<_>, _>>()?,
@@ -83,6 +95,6 @@ pub(crate) fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     Ok((cert, key))
 }
 
-pub(crate) fn new_reader(file: &PathBuf) -> Res<BufReader<File>> {
+pub fn new_reader(file: &PathBuf) -> Res<BufReader<File>> {
     Ok(BufReader::new(File::open(file)?))
 }
