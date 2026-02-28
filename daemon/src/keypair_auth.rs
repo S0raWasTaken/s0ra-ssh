@@ -16,10 +16,10 @@ use tokio::{
 };
 use tokio_rustls::{TlsAcceptor, server::TlsStream};
 
-type AuthorizedKeys = Arc<RwLock<Vec<PublicKey>>>;
+type AuthorizedKeys = Arc<RwLock<Arc<[PublicKey]>>>;
 
 pub fn watch_authorized_keys(path: &'static Path) -> Res<AuthorizedKeys> {
-    let keys = Arc::new(RwLock::new(load_authorized_keys(path)?));
+    let keys = Arc::new(RwLock::new(load_authorized_keys(path)?.into()));
     let keys_clone = Arc::clone(&keys);
 
     let mut watcher =
@@ -28,12 +28,12 @@ pub fn watch_authorized_keys(path: &'static Path) -> Res<AuthorizedKeys> {
 
             if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
             {
-                load_authorized_keys(path)
-                    .inspect_err(print_err)
-                    .inspect(|new_keys| {
-                        (*keys_clone.write().unwrap()).clone_from(new_keys);
-                    })
-                    .ok();
+                match load_authorized_keys(path) {
+                    Ok(new_keys) => {
+                        *keys_clone.write().unwrap() = new_keys.into();
+                    }
+                    Err(e) => print_err(&e),
+                }
             }
         })?;
 
@@ -57,7 +57,7 @@ pub fn load_authorized_keys(
 pub async fn authenticate_and_accept_connection(
     stream: TcpStream,
     address: SocketAddr,
-    authorized_keys: Vec<PublicKey>,
+    authorized_keys: Arc<[PublicKey]>,
     acceptor: TlsAcceptor,
 ) -> Res<()> {
     let mut socket = timeout(acceptor.accept(stream)).await??;
