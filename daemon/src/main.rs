@@ -175,6 +175,23 @@ fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
         let cert_pem = pair.cert.pem();
 
         fs::write(cert_path, cert_pem)?;
+
+        #[cfg(unix)]
+        {
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&key_path)?;
+            file.write_all(key_pem.as_bytes())?;
+        }
+
+        #[cfg(not(unix))]
         fs::write(key_path, key_pem)?;
 
         (
