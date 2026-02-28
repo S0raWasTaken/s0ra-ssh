@@ -1,5 +1,5 @@
 use super::{Res, print_err};
-use crate::connection::handle_client_connection;
+use crate::{BoxedError, connection::handle_client_connection};
 use libssh0::timeout;
 use notify::{
     Event, EventKind, RecursiveMode::NonRecursive, Watcher, recommended_watcher,
@@ -60,7 +60,7 @@ pub async fn authenticate_and_accept_connection(
     authorized_keys: Vec<PublicKey>,
     acceptor: TlsAcceptor,
 ) -> Res<()> {
-    let mut socket = acceptor.accept(stream).await?;
+    let mut socket = timeout(acceptor.accept(stream)).await??;
 
     timeout(authenticate(&mut socket, &authorized_keys)).await?.inspect_err(
         |_| {
@@ -88,29 +88,37 @@ pub async fn authenticate(
     let signature_length = u32::from_be_bytes(signature_length_reader) as usize;
 
     if signature_length > 4096 {
-        stream.write_all(&[0]).await?;
-        stream.flush().await?;
-        stream.shutdown().await?;
-        return Err("Signature too large".into());
+        return kill_stream(stream, "Signature too large").await;
     }
 
     let mut signature_bytes = vec![0u8; signature_length];
     stream.read_exact(&mut signature_bytes).await?;
 
-    let signature = SshSig::from_pem(signature_bytes)?;
+    let signature = match SshSig::from_pem(signature_bytes) {
+        Ok(sig) => sig,
+        Err(e) => return kill_stream(stream, e).await,
+    };
 
     if !authorized_keys
         .iter()
         .any(|entry| entry.verify("ssh0-auth", &challenge, &signature).is_ok())
     {
-        stream.write_all(&[0]).await?;
-        stream.flush().await?;
-        stream.shutdown().await?;
-        return Err("Unauthorized".into());
+        return kill_stream(stream, "Unauthorized").await;
     }
 
     stream.write_all(&[1]).await?;
     stream.flush().await?;
 
     Ok(())
+}
+
+async fn kill_stream(
+    stream: &mut TlsStream<TcpStream>,
+    error: impl Into<BoxedError>,
+) -> Res<()> {
+    stream.write_all(&[0]).await?;
+    stream.flush().await?;
+    stream.shutdown().await?;
+
+    Err(error.into())
 }
