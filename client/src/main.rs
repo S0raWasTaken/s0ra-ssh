@@ -87,32 +87,30 @@ async fn connect_tls(host: &str, port: u16) -> Res<TlsStream<TcpStream>> {
 
 const POSSIBLE_PATHS: [&str; 2] = ["id_ed25519", "id_rsa"];
 fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
-    if let Some(private_key_path) = key_path {
-        Ok(PrivateKey::read_openssh_file(&private_key_path)?)
-    } else {
+    let private_key_path = key_path.map_or_else(|| {
         let config_dir =
             config_dir().ok_or("Config dir not found")?.join("ssh0");
         let key_path = POSSIBLE_PATHS.iter().find(|entry| {
             config_dir.join(entry).exists()
         }).ok_or("No private keys found in the config directory. Try generating a new key pair using `ssh0-keygen`")?;
-        let private_key_path = config_dir.join(key_path);
+        Ok(config_dir.join(key_path))
+    }, Ok::<_, BoxedError>)?;
 
-        #[cfg(unix)]
-        {
-            use std::{fs, os::unix::fs::PermissionsExt};
+    #[cfg(unix)]
+    {
+        use std::{fs, os::unix::fs::PermissionsExt};
 
-            let mode = fs::metadata(&private_key_path)?.permissions().mode();
-            if mode & 0o077 != 0 {
-                return Err(format!(
+        let mode = fs::metadata(&private_key_path)?.permissions().mode();
+        if mode & 0o077 != 0 {
+            return Err(format!(
                 "Private key {} has too permissive permissions ({:o}), expected at most (600)",
                 private_key_path.display(),
                 mode & 0o777
             ).into());
-            }
         }
-
-        Ok(PrivateKey::read_openssh_file(&private_key_path)?)
     }
+
+    Ok(PrivateKey::read_openssh_file(&private_key_path)?)
 }
 
 async fn authenticate(

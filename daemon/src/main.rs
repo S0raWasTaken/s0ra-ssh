@@ -32,7 +32,7 @@ async fn main() -> Res<()> {
     let authorized_keys_path = config_dir.join("authorized_keys");
 
     let listener = TcpListener::bind(format!("{host}:{port}",)).await?;
-    println!("Listening on {port}");
+    println!("Listening on {host}:{port}");
 
     let acceptor = make_acceptor(&config_dir)?;
 
