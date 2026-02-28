@@ -1,3 +1,5 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 pub struct DropGuard<T, F: Fn(&mut T)> {
     object: T,
     run_on_drop: F,
@@ -11,6 +13,8 @@ impl<T, F: Fn(&mut T)> DropGuard<T, F> {
 
 impl<T, F: Fn(&mut T)> Drop for DropGuard<T, F> {
     fn drop(&mut self) {
-        (self.run_on_drop)(&mut self.object);
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            (self.run_on_drop)(&mut self.object);
+        }));
     }
 }
