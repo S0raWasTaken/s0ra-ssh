@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use argh::{FromArgValue, FromArgs};
 use dirs::config_dir;
+use ssh_key::Algorithm;
 
 fn default_config_path() -> PathBuf {
     let config_path = config_dir();
@@ -15,12 +16,28 @@ fn default_config_path() -> PathBuf {
     }
 }
 
+impl From<KeypairType> for Algorithm {
+    fn from(val: KeypairType) -> Self {
+        match val {
+            KeypairType::Dsa => Self::Dsa,
+            KeypairType::Ed25519 => Self::Ed25519,
+            KeypairType::Rsa512 => {
+                Self::Rsa { hash: Some(ssh_key::HashAlg::Sha512) }
+            }
+            KeypairType::Rsa256 => {
+                Self::Rsa { hash: Some(ssh_key::HashAlg::Sha256) }
+            }
+        }
+    }
+}
+
 #[derive(Default, Debug)]
-enum KeypairType {
+pub enum KeypairType {
     Dsa,
     #[default]
     Ed25519,
-    Rsa,
+    Rsa512,
+    Rsa256,
 }
 
 impl FromArgValue for KeypairType {
@@ -28,20 +45,21 @@ impl FromArgValue for KeypairType {
         match &*value.to_lowercase() {
             "dsa" => Ok(KeypairType::Dsa),
             "ed" | "ed25519" => Ok(KeypairType::Ed25519),
-            "rsa" => Ok(KeypairType::Rsa),
+            "rsa" | "rsa512" => Ok(KeypairType::Rsa512),
+            "rsa256" => Ok(KeypairType::Rsa256),
             _ => Err("Invalid key pair type".to_string()),
         }
     }
 }
 
-/// Generates a new authentication key for ssh0
+/// Generates a new authentication key for ssh0.
 #[derive(FromArgs, Debug)]
 pub struct Args {
-    /// key type
+    /// accepted values: rsa, rsa256, rsa512, ed, ed25519, dsa
     #[argh(option, short = 't', default = "KeypairType::default()")]
-    r#type: KeypairType,
+    pub r#type: KeypairType,
 
-    /// output path
+    /// output path. Defaults to OS-specific config dir
     #[argh(option, short = 'o', default = "default_config_path()")]
-    output: PathBuf,
+    pub output: PathBuf,
 }

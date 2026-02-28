@@ -1,8 +1,39 @@
+use std::path::Path;
+
 use args::Args;
+use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
 
 mod args;
 
-fn main() {
+type Res<T> = Result<T, Box<dyn std::error::Error>>;
+type KeyPair = (PublicKey, PrivateKey);
+
+fn main() -> Res<()> {
     let args: Args = argh::from_env();
     println!("{args:#?}");
+
+    let pair = make_key_pair(args.r#type.into())?;
+    save(pair, &args.output)
+}
+
+fn make_key_pair(algorithm: Algorithm) -> Res<KeyPair> {
+    println!("Generating new {} key pair...", algorithm.as_str());
+    let private_key = PrivateKey::random(&mut OsRng, algorithm)?;
+    Ok((private_key.public_key().clone(), private_key))
+}
+
+fn save((public_key, private_key): KeyPair, output: &Path) -> Res<()> {
+    let algorithm = match private_key.algorithm() {
+        Algorithm::Dsa => "id_dsa",
+        Algorithm::Ed25519 => "id_ed25519",
+        Algorithm::Rsa { .. } => "id_rsa",
+        _ => unreachable!(), // Ensured by Algorithm::from<KeyPairType>
+    };
+
+    let pub_path = output.join(format!("{algorithm}.pub"));
+    let priv_path = output.join(algorithm);
+
+    public_key.write_openssh_file(&pub_path)?;
+    private_key.write_openssh_file(&priv_path, LineEnding::default())?;
+    Ok(())
 }
