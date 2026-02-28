@@ -60,19 +60,17 @@ pub async fn authenticate_and_accept_connection(
     authorized_keys: Vec<PublicKey>,
     acceptor: TlsAcceptor,
 ) -> Res<()> {
-    let mut socket = acceptor.accept(stream).await.inspect_err(print_err)?;
+    let mut socket = acceptor.accept(stream).await?;
 
     timeout(authenticate(&mut socket, &authorized_keys)).await?.inspect_err(
-        |e| {
+        |_| {
             eprintln!("Signature verification failed for {address}");
-            eprintln!("{e}");
         },
     )?;
 
     println!("Authorized connection from {address}");
 
-    let mut socket =
-        handle_client_connection(socket).await.inspect_err(print_err)?;
+    let mut socket = handle_client_connection(socket).await?;
 
     socket.shutdown().await?;
     Ok(())

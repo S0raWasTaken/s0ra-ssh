@@ -58,13 +58,17 @@ async fn main() -> Res<()> {
         println!("Sending challenge to {address}");
 
         let authorized_keys = authorized_keys.read().unwrap().clone();
-
-        spawn(authenticate_and_accept_connection(
-            stream,
-            address,
-            authorized_keys,
-            acceptor.clone(),
-        ));
+        let acceptor = acceptor.clone();
+        spawn(async move {
+            authenticate_and_accept_connection(
+                stream,
+                address,
+                authorized_keys,
+                acceptor,
+            )
+            .await
+            .inspect_err(print_err)
+        });
     }
 }
 
