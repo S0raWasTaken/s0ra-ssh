@@ -45,7 +45,7 @@ pub struct Args {
     #[argh(option, short = 't', default = "KeypairType::default()")]
     pub r#type: KeypairType,
 
-    /// output path. Defaults to OS-specific config dir
+    /// output path; if omitted, defaults to OS-specific config dir
     #[argh(option, short = 'o')]
     pub output: Option<PathBuf>,
 }

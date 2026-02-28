@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use argh::FromArgs;
 
-/// Daemon program for ssh0. It tries toprovide secure encrypted communications between
+/// Daemon program for ssh0. It tries to provide secure encrypted communications between
 /// two untrusted hosts over an insecure network.
 #[derive(FromArgs)]
 pub struct Args {

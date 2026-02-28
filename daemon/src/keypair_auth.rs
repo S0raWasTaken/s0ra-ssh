@@ -33,7 +33,7 @@ pub async fn authenticate_and_accept_connection(
         },
     )?;
 
-    println!("Authorized!");
+    println!("Authorized connection from {address}");
 
     let mut socket =
         handle_client_connection(socket).await.inspect_err(print_err)?;
@@ -55,6 +55,7 @@ pub async fn authenticate(
 
     if signature_length > 4096 {
         stream.write_all(&[0]).await?;
+        stream.flush().await?;
         stream.shutdown().await?;
         return Err("Signature too large".into());
     }
@@ -69,6 +70,7 @@ pub async fn authenticate(
         .any(|entry| entry.verify("ssh0-auth", &challenge, &signature).is_ok())
     {
         stream.write_all(&[0]).await?;
+        stream.flush().await?;
         stream.shutdown().await?;
         return Err("Unauthorized".into());
     }

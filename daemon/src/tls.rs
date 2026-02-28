@@ -1,11 +1,10 @@
 use super::Res;
-use dirs::config_dir;
 use rcgen::generate_simple_self_signed;
 use rustls_pemfile::{certs, private_key};
 use std::{
-    fs::{self, File, create_dir_all},
+    fs::{self, File},
     io::BufReader,
-    path::PathBuf,
+    path::Path,
     sync::Arc,
 };
 use tokio_rustls::{
@@ -16,8 +15,8 @@ use tokio_rustls::{
     },
 };
 
-pub fn make_acceptor() -> Res<TlsAcceptor> {
-    let (certs, key) = load_from_default_or_make_new()?;
+pub fn make_acceptor(config_dir: &Path) -> Res<TlsAcceptor> {
+    let (certs, key) = load_from_default_or_make_new(config_dir)?;
 
     Ok(TlsAcceptor::from(Arc::new(
         ServerConfig::builder()
@@ -28,12 +27,9 @@ pub fn make_acceptor() -> Res<TlsAcceptor> {
 
 pub type CertKeyPair<'a> = (Vec<CertificateDer<'a>>, PrivateKeyDer<'a>);
 
-pub fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
-    let config_dir =
-        config_dir().ok_or("Config dir not found")?.join("ssh0-daemon");
-
-    create_dir_all(&config_dir)?;
-
+pub fn load_from_default_or_make_new(
+    config_dir: &Path,
+) -> Res<CertKeyPair<'static>> {
     let cert_path = config_dir.join("cert.pem");
     let key_path = config_dir.join("key.pem");
 
@@ -95,6 +91,6 @@ pub fn load_from_default_or_make_new() -> Res<CertKeyPair<'static>> {
     Ok((cert, key))
 }
 
-pub fn new_reader(file: &PathBuf) -> Res<BufReader<File>> {
+pub fn new_reader(file: &Path) -> Res<BufReader<File>> {
     Ok(BufReader::new(File::open(file)?))
 }

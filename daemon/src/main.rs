@@ -29,12 +29,12 @@ async fn main() -> Res<()> {
 
     create_dir_all(&config_dir)?;
 
-    let authorized_keys_path = config_dir.join("ssh0-daemon/authorized_keys");
+    let authorized_keys_path = config_dir.join("authorized_keys");
 
     let listener = TcpListener::bind(format!("{host}:{port}",)).await?;
-    println!("Listening on 2121");
+    println!("Listening on {port}");
 
-    let acceptor = make_acceptor()?;
+    let acceptor = make_acceptor(&config_dir)?;
 
     let rate_limiter = Arc::new(RateLimiter::new(5, Duration::from_mins(1)));
     let rl = Arc::clone(&rate_limiter);
