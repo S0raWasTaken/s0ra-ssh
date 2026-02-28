@@ -7,7 +7,7 @@ use std::{
 };
 
 use daybreak::{FileDatabase, deser::Yaml};
-use dirs::cache_dir;
+use dirs::config_dir;
 use sha2::{Digest, Sha256};
 use tokio_rustls::rustls::{
     self, DigitallySignedStruct, OtherError, SignatureScheme,
@@ -50,9 +50,9 @@ impl ServerCertVerifier for FingerprintCheck {
         let fingerprint = hex::encode(Sha256::digest(end_entity.as_ref()));
         let server_name = server_name.to_str();
 
-        let db = cache_dir()
-            .map(|cache| {
-                let path = cache.join("s0ra-ssh/known_hosts");
+        let db = config_dir()
+            .map(|config| {
+                let path = config.join("s0ra-ssh/known_hosts");
                 create_dir_all(path.parent().unwrap())
                     .map_err(into_other)?;
                 FileDatabase::<HashMap<Host, Fingerprint>, Yaml>::load_from_path_or_default(
@@ -123,8 +123,11 @@ impl ServerCertVerifier for FingerprintCheck {
                 db.save()?;
                 println!(
                     "Accepted!\nSaved new host to {}\n",
-                    // Should be safe, if db exists, it must mean that the cache_dir must too.
-                    cache_dir().unwrap().join("s0ra-ssh/known_hosts").display()
+                    // Should be safe, if db exists, it must mean that the config_dir must too.
+                    config_dir()
+                        .unwrap()
+                        .join("s0ra-ssh/known_hosts")
+                        .display()
                 );
                 Ok(())
             })
