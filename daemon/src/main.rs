@@ -5,7 +5,10 @@ use crate::{
     tls::make_acceptor,
 };
 use std::{fmt::Display, fs::create_dir_all, sync::Arc, time::Duration};
-use tokio::{io::AsyncWriteExt, net::TcpListener, spawn, time::sleep};
+use tokio::{
+    io::AsyncWriteExt, net::TcpListener, spawn, task::spawn_blocking,
+    time::sleep,
+};
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
@@ -29,7 +32,7 @@ async fn main() -> Res<()> {
 
     create_dir_all(&config_dir)?;
 
-    let authorized_keys_path = config_dir.join("authorized_keys");
+    let authorized_keys_path = config_dir.join("authorized_keys").leak();
 
     let listener = TcpListener::bind(format!("{host}:{port}",)).await?;
     println!("Listening on {host}:{port}");
@@ -54,11 +57,12 @@ async fn main() -> Res<()> {
 
         println!("Sending challenge to {address}");
 
-        let authorized_keys = load_authorized_keys(&authorized_keys_path)
-            .unwrap_or_else(|e| {
-                eprintln!("{e}");
-                Vec::new()
-            });
+        let authorized_keys = spawn_blocking(|| {
+            load_authorized_keys(authorized_keys_path)
+                .inspect_err(print_err)
+                .unwrap_or_default()
+        })
+        .await?;
         spawn(authenticate_and_accept_connection(
             stream,
             address,
