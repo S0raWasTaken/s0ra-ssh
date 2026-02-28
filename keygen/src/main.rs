@@ -14,7 +14,6 @@ type KeyPair = (PublicKey, PrivateKey);
 
 fn main() -> Res<()> {
     let args: Args = argh::from_env();
-    println!("{args:#?}");
 
     let output_path = args.output.unwrap_or_else(default_config_path);
 
