@@ -1,3 +1,6 @@
+use daybreak::{FileDatabase, deser::Yaml};
+use dirs::config_dir;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     error::Error,
@@ -5,10 +8,6 @@ use std::{
     io::{Read, Write, stdin, stdout},
     sync::Arc,
 };
-
-use daybreak::{FileDatabase, deser::Yaml};
-use dirs::config_dir;
-use sha2::{Digest, Sha256};
 use tokio_rustls::rustls::{
     self, DigitallySignedStruct, OtherError, SignatureScheme,
     client::danger::{

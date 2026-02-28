@@ -1,6 +1,6 @@
-mod dropguard;
 use std::time::Duration;
 
+mod dropguard;
 pub use dropguard::DropGuard;
 
 /// # Errors

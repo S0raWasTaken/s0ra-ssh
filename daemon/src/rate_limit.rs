@@ -1,9 +1,8 @@
+use dashmap::DashMap;
 use std::{
     net::IpAddr,
     time::{Duration, Instant},
 };
-
-use dashmap::DashMap;
 
 pub struct RateLimiter {
     attempts: DashMap<IpAddr, (u32, Instant)>,

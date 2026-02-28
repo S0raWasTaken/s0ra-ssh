@@ -1,6 +1,5 @@
-use std::path::PathBuf;
-
 use argh::FromArgs;
+use std::path::PathBuf;
 
 /// Connect to a remote host via ssh0
 #[derive(FromArgs)]

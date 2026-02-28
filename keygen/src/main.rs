@@ -1,11 +1,10 @@
+use args::Args;
+use dirs::config_dir;
+use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
 use std::{
     fs::create_dir_all,
     path::{Path, PathBuf},
 };
-
-use args::Args;
-use dirs::config_dir;
-use ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey, rand_core::OsRng};
 
 mod args;
 

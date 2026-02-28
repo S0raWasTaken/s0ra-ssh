@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-
 use argh::{FromArgValue, FromArgs};
 use ssh_key::Algorithm;
+use std::path::PathBuf;
 
 impl From<KeypairType> for Algorithm {
     fn from(val: KeypairType) -> Self {

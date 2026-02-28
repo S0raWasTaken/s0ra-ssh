@@ -1,3 +1,10 @@
+use crate::{
+    args::Args, fingerprint::FingerprintCheck, read_stdin::read_stdin,
+};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use dirs::config_dir;
+use libssh0::{DropGuard, break_if, timeout};
+use ssh_key::{LineEnding, PrivateKey};
 use std::{
     error::Error,
     io::{ErrorKind::UnexpectedEof, Write, stdout},
@@ -5,10 +12,6 @@ use std::{
     process::exit,
     sync::Arc,
 };
-
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use dirs::config_dir;
-use ssh_key::{LineEnding, PrivateKey};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
     net::TcpStream,
@@ -21,11 +24,6 @@ use tokio_rustls::{
     client::TlsStream,
     rustls::{ClientConfig, pki_types::ServerName},
 };
-
-use crate::{
-    args::Args, fingerprint::FingerprintCheck, read_stdin::read_stdin,
-};
-use libssh0::{DropGuard, break_if, timeout};
 
 type BoxedError = Box<dyn Error + Send + Sync>;
 type Res<T> = Result<T, BoxedError>;
