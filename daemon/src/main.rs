@@ -19,7 +19,7 @@ mod keypair_auth;
 mod rate_limit;
 mod tls;
 
-#[tokio::main]
+#[tokio::main(worker_threads = 2)]
 async fn main() -> Res<()> {
     let context = setup()?;
 
