@@ -20,17 +20,18 @@ use tokio_rustls::{TlsAcceptor, server::TlsStream};
 
 type AuthorizedKeys = Arc<RwLock<Arc<[PublicKey]>>>;
 
-pub fn watch_authorized_keys(path: &'static Path) -> Res<AuthorizedKeys> {
+pub fn watch_authorized_keys(path: &Path) -> Res<AuthorizedKeys> {
     let keys = Arc::new(RwLock::new(load_authorized_keys(path)?.into()));
     let keys_clone = Arc::clone(&keys);
 
+    let auth_keys_path = path.to_path_buf();
     let mut watcher =
         recommended_watcher(move |event: notify::Result<Event>| {
             let Ok(event) = event else { return };
 
             if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
             {
-                match load_authorized_keys(path) {
+                match load_authorized_keys(&auth_keys_path) {
                     Ok(new_keys) => {
                         *keys_clone.write().unwrap() = new_keys.into();
                     }
@@ -76,7 +77,7 @@ pub async fn authenticate_and_accept_connection(
     .await
     .inspect_err(|_| rate_limiter.increment(address.ip()))?;
 
-    println!("Authorized connection from {address}");
+    log!("Authorized connection from {address}");
 
     let mut socket = handle_client_connection(socket).await?;
 

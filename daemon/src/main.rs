@@ -32,10 +32,8 @@ async fn main() -> Res<()> {
 
     create_dir_all(&config_dir)?;
 
-    // Acceptable leak, only occurs once, and it will be used as long as the
-    // daemon is running
-    let authorized_keys_path = config_dir.join("authorized_keys").leak();
-    let authorized_keys = watch_authorized_keys(authorized_keys_path)?;
+    let authorized_keys_path = config_dir.join("authorized_keys");
+    let authorized_keys = watch_authorized_keys(&authorized_keys_path)?;
 
     let listener = TcpListener::bind((&*host, port)).await?;
     log!("Listening on {host}:{port}");
