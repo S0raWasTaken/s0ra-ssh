@@ -72,12 +72,6 @@ impl SessionRegistry {
         (session.clone(), SessionGuard { registry: weak, fingerprint, session })
     }
 
-    fn unregister(&self, fingerprint: &str, id: usize) {
-        if let Some(mut tokens) = self.sessions.get_mut(fingerprint) {
-            tokens.retain(|info| info.id != id);
-        }
-    }
-
     pub fn kill_unlisted(&self, active_fingerprints: &HashSet<String>) {
         self.sessions.retain(|fingerprint, tokens| {
             if active_fingerprints.contains(fingerprint) {
@@ -88,6 +82,23 @@ impl SessionRegistry {
                 false
             }
         });
+    }
+
+    pub fn kill_all(&self) {
+        for entry in &self.sessions {
+            entry
+                .value()
+                .iter()
+                .for_each(|session| session.cancel("called `kill_all`"));
+        }
+
+        self.sessions.clear();
+    }
+
+    fn unregister(&self, fingerprint: &str, id: usize) {
+        if let Some(mut tokens) = self.sessions.get_mut(fingerprint) {
+            tokens.retain(|info| info.id != id);
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
-    keypair_auth::AuthorizedKeys,
     rate_limit::RateLimiter,
     sessions::{KeyFingerprint, SessionGuard, SessionInfo, SessionRegistry},
+    watcher::AuthorizedKeys,
 };
 use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{spawn, sync::Semaphore, time::sleep};

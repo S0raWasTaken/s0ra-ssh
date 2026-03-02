@@ -1,10 +1,11 @@
 use crate::{
     args::Args,
     context::{Context, HostAndPort},
-    keypair_auth::{authenticate_and_accept_connection, watch_authorized_keys},
+    keypair_auth::authenticate_and_accept_connection,
     rate_limit::RateLimiter,
     sessions::SessionRegistry,
     tls::make_acceptor,
+    watcher::watch_authorized_keys,
 };
 use libssh0::log;
 use ssh_key::PublicKey;
@@ -19,9 +20,9 @@ mod connection;
 mod context;
 mod keypair_auth;
 mod rate_limit;
-mod tls;
-
 mod sessions;
+mod tls;
+mod watcher;
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Res<()> {
@@ -53,10 +54,9 @@ fn setup() -> Res<Arc<Context>> {
     create_dir_all(&config_dir)?;
 
     let sessions = Arc::new(SessionRegistry::new());
-    let authorized_keys_path = config_dir.join("authorized_keys");
     Ok(Context::new(
         make_acceptor(&config_dir)?,
-        watch_authorized_keys(&authorized_keys_path, sessions.clone())?,
+        watch_authorized_keys(&config_dir, sessions.clone())?,
         RateLimiter::new(3, Duration::from_mins(30)),
         Semaphore::new(100),
         HostAndPort::new(host, port),

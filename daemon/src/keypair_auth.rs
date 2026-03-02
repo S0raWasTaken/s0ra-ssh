@@ -1,66 +1,13 @@
-use super::{Res, print_err};
+use super::Res;
 use crate::{
     BoxedError, connection::handle_client_connection, context::Context,
-    fingerprint, sessions::SessionRegistry,
+    fingerprint,
 };
 use libssh0::{log, read, read_exact, timeout};
-use notify::{
-    Event, EventKind, RecursiveMode::NonRecursive, Watcher, recommended_watcher,
-};
 use ssh_key::{PublicKey, SshSig};
-use std::{
-    net::SocketAddr,
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tokio_rustls::server::TlsStream;
-
-pub type AuthorizedKeys = Arc<RwLock<Arc<[PublicKey]>>>;
-
-pub fn watch_authorized_keys(
-    path: &Path,
-    sessions: Arc<SessionRegistry>,
-) -> Res<AuthorizedKeys> {
-    let keys = Arc::new(RwLock::new(load_authorized_keys(path)?.into()));
-    let keys_clone = Arc::clone(&keys);
-
-    let auth_keys_path = path.to_path_buf();
-    let mut watcher =
-        recommended_watcher(move |event: notify::Result<Event>| {
-            let Ok(event) = event else { return };
-
-            if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
-            {
-                match load_authorized_keys(&auth_keys_path) {
-                    Ok(new_keys) => {
-                        let active_fingerprints =
-                            new_keys.iter().map(fingerprint).collect();
-
-                        sessions.kill_unlisted(&active_fingerprints);
-                        *keys_clone.write().unwrap() = new_keys.into();
-                    }
-                    Err(e) => print_err(&e),
-                }
-            }
-        })?;
-
-    watcher.watch(path, NonRecursive)?;
-
-    // Leaks the watcher, so it stays alive until the daemon exits.
-    Box::leak(Box::new(watcher));
-
-    Ok(keys)
-}
-
-pub fn load_authorized_keys(
-    authorized_keys_path: &Path,
-) -> Res<Vec<PublicKey>> {
-    Ok(ssh_key::AuthorizedKeys::read_file(authorized_keys_path)?
-        .iter()
-        .map(|e| e.public_key().clone())
-        .collect::<Vec<_>>())
-}
 
 pub async fn authenticate_and_accept_connection(
     stream: TcpStream,
