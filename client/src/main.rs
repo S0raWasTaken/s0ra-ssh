@@ -3,7 +3,7 @@ use crate::{
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use dirs::config_dir;
-use libssh0::{DropGuard, break_if, timeout};
+use libssh0::{DropGuard, break_if, read_exact, timeout};
 use ssh_key::{LineEnding, PrivateKey};
 use std::{
     error::Error,
@@ -114,11 +114,10 @@ fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
 }
 
 async fn authenticate(
-    stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
+    mut stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
     private_key: PrivateKey,
 ) -> Res<()> {
-    let mut challenge = [0u8; 32];
-    stream.read_exact(&mut challenge).await?;
+    let challenge = read_exact!(stream, 32).await?;
 
     let signature = private_key
         .sign("ssh0-auth", ssh_key::HashAlg::Sha512, &challenge)?
@@ -129,8 +128,7 @@ async fn authenticate(
     stream.write_all(&(signature_bytes.len() as u32).to_be_bytes()).await?;
     stream.write_all(signature_bytes).await?;
 
-    let mut result = [0u8];
-    stream.read_exact(&mut result).await?;
+    let result = read_exact!(stream, 1).await?;
     if result[0] != 1 {
         return Err("Authentication failed".into());
     }

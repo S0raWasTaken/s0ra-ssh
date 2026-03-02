@@ -3,7 +3,7 @@ use crate::{
     BoxedError, connection::handle_client_connection, context::Context,
     fingerprint, sessions::SessionRegistry,
 };
-use libssh0::{log, timeout};
+use libssh0::{log, read, read_exact, timeout};
 use notify::{
     Event, EventKind, RecursiveMode::NonRecursive, Watcher, recommended_watcher,
 };
@@ -13,10 +13,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tokio_rustls::server::TlsStream;
 
 pub type AuthorizedKeys = Arc<RwLock<Arc<[PublicKey]>>>;
@@ -92,29 +89,27 @@ pub async fn authenticate_and_accept_connection(
     let (session, _session_guard) =
         context.register_session(fingerprint(&public_key), address);
 
-    let mut socket = handle_client_connection(socket, session.token).await?;
+    let mut socket = handle_client_connection(socket, session).await?;
 
     socket.shutdown().await?;
     Ok(())
 }
 
 pub async fn authenticate(
-    stream: &mut TlsStream<TcpStream>,
+    mut stream: &mut TlsStream<TcpStream>,
     authorized_keys: &[PublicKey],
 ) -> Res<PublicKey> {
     let challenge = rand::random::<[u8; 32]>();
     stream.write_all(&challenge).await?;
 
-    let mut signature_length_reader = [0u8; 4];
-    stream.read_exact(&mut signature_length_reader).await?;
-    let signature_length = u32::from_be_bytes(signature_length_reader) as usize;
+    let signature_length =
+        u32::from_be_bytes(read_exact!(stream, 4).await?) as usize;
 
     if signature_length > 4096 {
         return kill_stream(stream, "Signature too large").await;
     }
 
-    let mut signature_bytes = vec![0u8; signature_length];
-    stream.read_exact(&mut signature_bytes).await?;
+    let signature_bytes = read!(stream, signature_length).await?;
 
     let signature = match SshSig::from_pem(signature_bytes) {
         Ok(sig) => sig,
@@ -138,7 +133,7 @@ pub async fn authenticate(
 async fn kill_stream(
     stream: &mut TlsStream<TcpStream>,
     error: impl Into<BoxedError>,
-) -> Res<PublicKey> /*Never fulfilled, obviously*/ {
+) -> Res<PublicKey> /*Never*/ {
     stream.write_all(&[0]).await?;
     stream.flush().await?;
     stream.shutdown().await?;
