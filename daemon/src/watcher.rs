@@ -49,8 +49,8 @@ fn watch(
                 Ok(new_keys) => {
                     let new_fingerprints =
                         new_keys.iter().map(fingerprint).collect();
-                    sessions.kill_unlisted(&new_fingerprints);
                     *keys.write().unwrap() = new_keys.into();
+                    sessions.kill_unlisted(&new_fingerprints);
                 }
                 Err(e) => print_err(&e),
             }
