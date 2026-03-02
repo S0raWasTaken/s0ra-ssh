@@ -5,6 +5,7 @@ use notify::{
 };
 use ssh_key::PublicKey;
 use std::{
+    collections::HashSet,
     ops::ControlFlow,
     path::Path,
     sync::{
@@ -145,10 +146,19 @@ fn recheck(
     sessions: &Arc<SessionRegistry>,
     keys: &Arc<RwLock<Arc<[PublicKey]>>>,
 ) {
-    if let Ok(recheck) = load_authorized_keys(path)
-        && recheck.is_empty()
-    {
-        sessions.kill_all();
-        *keys.write().unwrap() = Arc::from([]);
+    match load_authorized_keys(path) {
+        Ok(reloaded) => {
+            let new_fingerprints: HashSet<String> =
+                reloaded.iter().map(fingerprint).collect();
+            *keys.write().unwrap() = reloaded.into();
+
+            if new_fingerprints.is_empty() {
+                sessions.kill_all();
+                log!(e "authorized_keys remained empty after debounce — all sessions killed");
+            } else {
+                sessions.kill_unlisted(&new_fingerprints);
+            }
+        }
+        Err(e) => print_err(&e),
     }
 }
