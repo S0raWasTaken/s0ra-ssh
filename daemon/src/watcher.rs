@@ -22,7 +22,13 @@ pub fn watch_authorized_keys(
     let authorized_keys_path = config_dir.join("authorized_keys");
 
     let keys = Arc::new(RwLock::new(
-        load_authorized_keys(&authorized_keys_path).unwrap_or_default().into(),
+        load_authorized_keys(&authorized_keys_path)
+            .inspect_err(|e| {
+                print_err(e);
+                log!(e "Using an empty authorized_keys list");
+            })
+            .unwrap_or_default()
+            .into(),
     ));
     let keys_clone = Arc::clone(&keys);
 
