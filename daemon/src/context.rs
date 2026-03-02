@@ -1,4 +1,5 @@
 use crate::{
+    Res, fingerprint,
     rate_limit::RateLimiter,
     sessions::{KeyFingerprint, SessionGuard, SessionInfo, SessionRegistry},
     watcher::AuthorizedKeys,
@@ -64,9 +65,25 @@ impl Context {
         &self,
         fingerprint: KeyFingerprint,
         address: SocketAddr,
-    ) -> (SessionInfo, SessionGuard) {
+    ) -> Res<(SessionInfo, SessionGuard)> {
+        self.recheck_auth(&fingerprint)?;
+
         let weak = Arc::downgrade(&self.sessions);
-        self.sessions.register(fingerprint, weak, address)
+        Ok(self.sessions.register(fingerprint, weak, address))
+    }
+
+    fn recheck_auth(&self, key_fingerprint: &str) -> Res<()> {
+        let still_authorized = self
+            .authorized_keys
+            .read()
+            .unwrap()
+            .iter()
+            .any(|k| fingerprint(k) == key_fingerprint);
+
+        if !still_authorized {
+            return Err("Key revoked during authentication".into());
+        }
+        Ok(())
     }
 }
 

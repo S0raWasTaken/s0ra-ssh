@@ -35,7 +35,7 @@ pub async fn authenticate_and_accept_connection(
     context.rate_limiter.reset(address.ip());
 
     let (session, _session_guard) =
-        context.register_session(fingerprint(&public_key), address);
+        context.register_session(fingerprint(&public_key), address)?;
 
     let mut socket = handle_client_connection(socket, session).await?;
 
