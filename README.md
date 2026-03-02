@@ -36,4 +36,4 @@ On first connection you'll be asked to verify the server's TLS fingerprint.
 
 - No terminal resize support
 - No file transfer or port forwarding
-- Removing a key from `authorized_keys` doesn't kill active sessions
+- ~~Removing a key from authorized_keys doesn't kill active sessions~~ **`now it does!`**
