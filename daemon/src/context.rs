@@ -1,12 +1,11 @@
 use crate::{
     keypair_auth::AuthorizedKeys,
     rate_limit::RateLimiter,
-    sessions::{KeyFingerprint, SessionGuard, SessionRegistry},
+    sessions::{KeyFingerprint, SessionGuard, SessionInfo, SessionRegistry},
 };
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::{fmt::Display, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{spawn, sync::Semaphore, time::sleep};
 use tokio_rustls::TlsAcceptor;
-use tokio_util::sync::CancellationToken;
 
 pub struct HostAndPort {
     host: String,
@@ -64,9 +63,10 @@ impl Context {
     pub fn register_session(
         &self,
         fingerprint: KeyFingerprint,
-    ) -> (CancellationToken, SessionGuard) {
+        address: SocketAddr,
+    ) -> (SessionInfo, SessionGuard) {
         let weak = Arc::downgrade(&self.sessions);
-        self.sessions.register(fingerprint, weak)
+        self.sessions.register(fingerprint, weak, address)
     }
 }
 

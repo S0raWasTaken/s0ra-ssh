@@ -1,34 +1,83 @@
 use dashmap::DashMap;
-use std::{collections::HashSet, ptr::from_ref, sync::Weak};
+use libssh0::log;
+use std::{
+    collections::HashSet,
+    fmt::Display,
+    net::SocketAddr,
+    ptr::from_ref,
+    sync::{
+        Weak,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 use tokio_util::sync::CancellationToken;
 
 pub type KeyFingerprint = String;
 
+#[derive(Clone)]
+pub struct SessionInfo {
+    pub id: usize,
+    pub address: SocketAddr,
+    pub token: CancellationToken,
+}
+
+impl Display for SessionInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Session {} on {}", self.id, self.address)
+    }
+}
+
+impl SessionInfo {
+    pub fn new(
+        id: usize,
+        address: SocketAddr,
+        token: CancellationToken,
+    ) -> Self {
+        Self { id, address, token }
+    }
+
+    pub fn cancel(&self, reason: &str) {
+        self.token.cancel();
+        log!(e "{self} killed by: {reason}");
+    }
+}
+
 pub struct SessionRegistry {
-    sessions: DashMap<KeyFingerprint, Vec<CancellationToken>>,
+    sessions: DashMap<KeyFingerprint, Vec<SessionInfo>>,
+    counter: AtomicUsize,
 }
 
 impl SessionRegistry {
     pub fn new() -> Self {
-        Self { sessions: DashMap::new() }
+        Self { sessions: DashMap::new(), counter: AtomicUsize::default() }
     }
 
     pub fn register(
         &self,
         fingerprint: KeyFingerprint,
         weak: Weak<Self>,
-    ) -> (CancellationToken, SessionGuard) {
-        let token = CancellationToken::new();
+        address: SocketAddr,
+    ) -> (SessionInfo, SessionGuard) {
+        let session = SessionInfo::new(
+            self.counter.fetch_add(1, Ordering::Relaxed),
+            address,
+            CancellationToken::new(),
+        );
+
+        log!("{session} opened");
+
         self.sessions
             .entry(fingerprint.clone())
             .or_default()
-            .push(token.clone());
-        (token.clone(), SessionGuard { registry: weak, fingerprint, token })
+            .push(session.clone());
+        (session.clone(), SessionGuard { registry: weak, fingerprint, session })
     }
 
     fn unregister(&self, fingerprint: &str, token: &CancellationToken) {
         if let Some(mut tokens) = self.sessions.get_mut(fingerprint) {
-            tokens.retain(|t| !std::ptr::eq(from_ref(t), from_ref(token)));
+            tokens.retain(|info| {
+                !std::ptr::eq(from_ref(&info.token), from_ref(token))
+            });
         }
     }
 
@@ -37,7 +86,8 @@ impl SessionRegistry {
             if active_fingerprints.contains(fingerprint) {
                 true
             } else {
-                tokens.iter().for_each(CancellationToken::cancel);
+                #[expect(clippy::needless_for_each, reason = "Less nesting")]
+                tokens.iter().for_each(|s| s.cancel("authorized_keys change"));
                 false
             }
         });
@@ -47,13 +97,14 @@ impl SessionRegistry {
 pub struct SessionGuard {
     registry: Weak<SessionRegistry>,
     fingerprint: KeyFingerprint,
-    token: CancellationToken,
+    session: SessionInfo,
 }
 
 impl Drop for SessionGuard {
     fn drop(&mut self) {
         if let Some(registry) = self.registry.upgrade() {
-            registry.unregister(&self.fingerprint, &self.token);
+            log!("{} dropped", self.session);
+            registry.unregister(&self.fingerprint, &self.session.token);
         }
     }
 }

@@ -89,10 +89,10 @@ pub async fn authenticate_and_accept_connection(
 
     log!("Authorized connection from {address}");
 
-    let (token, _session_guard) =
-        context.register_session(fingerprint(&public_key));
+    let (session, _session_guard) =
+        context.register_session(fingerprint(&public_key), address);
 
-    let mut socket = handle_client_connection(socket, token).await?;
+    let mut socket = handle_client_connection(socket, session.token).await?;
 
     socket.shutdown().await?;
     Ok(())
