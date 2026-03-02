@@ -122,17 +122,18 @@ fn check_atomic_save(
     keys: &AuthorizedKeys,
     tokio_handle: &Handle,
 ) -> ControlFlow<()> {
-    if new_keys.is_empty() && !EMPTY_CHECK_TASK.swap(true, Relaxed) {
-        let path = authorized_keys_path.to_path_buf();
-        let sessions = Arc::clone(sessions);
-        let keys = Arc::clone(keys);
+    if new_keys.is_empty() {
+        if !EMPTY_CHECK_TASK.swap(true, Relaxed) {
+            let path = authorized_keys_path.to_path_buf();
+            let sessions = Arc::clone(sessions);
+            let keys = Arc::clone(keys);
 
-        tokio_handle.spawn(async move {
-            sleep(Duration::from_millis(10)).await;
-            EMPTY_CHECK_TASK.store(false, Relaxed);
-
-            recheck(&path, &sessions, &keys);
-        });
+            tokio_handle.spawn(async move {
+                sleep(Duration::from_millis(10)).await;
+                recheck(&path, &sessions, &keys);
+                EMPTY_CHECK_TASK.store(false, Relaxed);
+            });
+        }
 
         return ControlFlow::Break(());
     }
