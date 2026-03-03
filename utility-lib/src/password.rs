@@ -60,7 +60,10 @@ pub fn prompt_passphrase_twice(
 
     let pf2 = prompt_passphrase(prompt2)?;
     if pf1 != pf2 {
-        return Err(io::Error::other("Passphrases don't match"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Passphrases don't match",
+        ));
     }
     Ok(pf1)
 }
