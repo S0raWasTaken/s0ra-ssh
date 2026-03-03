@@ -1,3 +1,4 @@
+use crate::Stream;
 use crate::sessions::SessionInfo;
 
 use super::{Res, print_err};
@@ -11,8 +12,8 @@ use std::{
 };
 use tokio::{
     io::{
-        AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-        ErrorKind::UnexpectedEof, WriteHalf,
+        AsyncReadExt, AsyncWrite, AsyncWriteExt, ErrorKind::UnexpectedEof,
+        WriteHalf,
     },
     select, spawn,
     sync::mpsc::{Receiver, Sender, channel},
@@ -20,13 +21,10 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub async fn handle_client_connection<S>(
-    socket: S,
+pub async fn handle_client_connection(
+    socket: Stream,
     session: SessionInfo,
-) -> Res<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{
+) -> Res<Stream> {
     let pty = native_pty_system();
     let pair = pty.openpty(PtySize::default())?;
 

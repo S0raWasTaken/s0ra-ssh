@@ -1,5 +1,7 @@
+pub mod common;
 mod dropguard;
 mod password;
+
 pub use chrono;
 pub use dropguard::DropGuard;
 pub use password::{prompt_passphrase, prompt_passphrase_twice};
