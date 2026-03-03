@@ -1,18 +1,18 @@
-use std::time::Duration;
-
 mod dropguard;
+mod password;
 pub use chrono;
 pub use dropguard::DropGuard;
-pub use tokio;
+pub use password::prompt_passphrase;
 
 /// Wraps a future with a 10-second timeout.
 ///
 /// # Errors
 /// Returns [`tokio::time::error::Elapsed`] if the future does not complete within 10 seconds.
+#[cfg(feature = "tokio")]
 pub async fn timeout<F: IntoFuture>(
     f: F,
 ) -> Result<F::Output, tokio::time::error::Elapsed> {
-    tokio::time::timeout(Duration::from_secs(10), f).await
+    tokio::time::timeout(std::time::Duration::from_secs(10), f).await
 }
 
 /// Logs a timestamped message to stdout or stderr.
@@ -58,8 +58,7 @@ macro_rules! read {
     ($stream:expr, $len:expr) => {{
         async {
             let mut buf = vec![0u8; $len];
-            $crate::tokio::io::AsyncReadExt::read_exact(&mut $stream, &mut buf)
-                .await?;
+            tokio::io::AsyncReadExt::read_exact(&mut $stream, &mut buf).await?;
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(buf)
         }
     }};
@@ -77,8 +76,7 @@ macro_rules! read_exact {
     ($stream:expr, $len:expr) => {{
         async {
             let mut buf = [0u8; $len];
-            $crate::tokio::io::AsyncReadExt::read_exact(&mut $stream, &mut buf)
-                .await?;
+            tokio::io::AsyncReadExt::read_exact(&mut $stream, &mut buf).await?;
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(buf)
         }
     }};
