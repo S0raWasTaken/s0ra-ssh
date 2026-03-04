@@ -14,6 +14,9 @@ use tokio::{
 
 use crate::{Res, Stream};
 
+const BUFFER_SIZE: usize = 8192;
+const BUFFER_SIZE_U64: u64 = BUFFER_SIZE as u64;
+
 // Server <- Client
 pub async fn handle_upload(mut stream: Stream) -> Res<Stream> {
     let path = get_path(&mut stream).await?;
@@ -40,14 +43,14 @@ pub async fn handle_download(mut stream: Stream) -> Res<Stream> {
     Ok(stream)
 }
 
-async fn send_file(stream: &mut Stream, path: &Path) -> Res<()> {
+async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
     let mut file = File::open(path).await?;
     let file_size = file.metadata().await?.len();
 
     stream.write_all(&file_size.to_be_bytes()).await?;
     stream.flush().await?;
 
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; BUFFER_SIZE];
     loop {
         let n = file.read(&mut buffer).await?;
         if n == 0 {
@@ -64,19 +67,19 @@ async fn receive_file(
     stream: &mut Stream,
     output_path: &Path,
     file_size: u64,
-) -> Res<()> {
+) -> io::Result<()> {
     let mut file = File::create(output_path).await?;
     let mut remaining = file_size;
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; BUFFER_SIZE];
 
     while remaining > 0 {
-        let to_read = usize::try_from(remaining)?.min(buffer.len());
+        let to_read = remaining.min(BUFFER_SIZE_U64) as usize;
         let n = stream.read(&mut buffer[..to_read]).await?;
         if n == 0 {
-            return Err(Box::new(io::Error::new(
+            return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "Connection was aborted prematurely",
-            )));
+            ));
         }
         file.write_all(&buffer[..n]).await?;
         remaining -= n as u64;
