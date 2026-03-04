@@ -17,3 +17,11 @@ ssh-key = { version = "0.6.7", features = ["rsa", "ed25519", "encryption"] }
 
 [lints]
 workspace = true
+
+[lib]
+path = "src/lib.rs"
+name = "libssh0_client"
+
+[[bin]]
+name = "ssh0"
+path = "src/main.rs"
