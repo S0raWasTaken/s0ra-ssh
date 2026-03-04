@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["client", "daemon", "utility-lib", "keygen"]
+members = ["ssh-client", "daemon", "utility-lib", "keygen"]
 
 [workspace.lints.clippy]
 allow_attributes = "warn"
