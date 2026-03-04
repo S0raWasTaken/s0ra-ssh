@@ -18,6 +18,8 @@ impl SessionType {
     }
 }
 
+pub const CHALLENGE_SIZE: usize = 256;
+
 pub const SCP_ERROR: [u8; 1] = [0xFF];
 pub const SCP_CONTINUE: [u8; 1] = [0x00];
 pub const SCP_SUCCESS: [u8; 1] = [0x01];

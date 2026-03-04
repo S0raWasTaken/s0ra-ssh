@@ -1,7 +1,7 @@
 use super::Res;
 use crate::{BoxedError, context::Context, fingerprint, scp, ssh};
 use libssh0::{
-    common::{SessionType, handshake},
+    common::{CHALLENGE_SIZE, SessionType, handshake},
     log, read, read_exact, timeout,
 };
 use ssh_key::{PublicKey, SshSig};
@@ -56,7 +56,7 @@ pub async fn authenticate(
 ) -> Res<(PublicKey, SessionType)> {
     let session_type = handshake(stream).await?;
 
-    let challenge = rand::random::<[u8; 32]>();
+    let challenge = rand::random::<[u8; CHALLENGE_SIZE]>();
     stream.write_all(&challenge).await?;
 
     let signature_length =

@@ -1,6 +1,6 @@
 use dirs::config_dir;
 use libssh0::{
-    common::{SessionType, handshake::handshake_client},
+    common::{CHALLENGE_SIZE, SessionType, handshake::handshake_client},
     prompt_passphrase, read_exact, timeout,
 };
 use ssh_key::{LineEnding, PrivateKey};
@@ -106,7 +106,7 @@ pub async fn authenticate(
 ) -> Res<()> {
     handshake_client(stream, SessionType::Shell).await?;
 
-    let challenge = read_exact!(stream, 32).await?;
+    let challenge = read_exact!(stream, CHALLENGE_SIZE).await?;
 
     let signature = private_key
         .sign("ssh0-auth", ssh_key::HashAlg::Sha512, &challenge)?
