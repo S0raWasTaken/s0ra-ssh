@@ -1,8 +1,9 @@
+use crate::ClientEvent;
 use libssh0::break_if;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(not(windows))]
-pub fn read_stdin(tx: &Sender<Vec<u8>>) {
+pub fn read_stdin(tx: &Sender<ClientEvent>) {
     use std::io::{Read, stdin};
 
     let mut buf = [0u8; 1024];
@@ -10,7 +11,10 @@ pub fn read_stdin(tx: &Sender<Vec<u8>>) {
         match stdin().read(&mut buf) {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                break_if!(tx.blocking_send(buf[..n].to_vec()).is_err());
+                break_if!(
+                    tx.blocking_send(ClientEvent::Input(buf[..n].to_vec()))
+                        .is_err()
+                );
             }
         }
     }
@@ -55,9 +59,6 @@ pub fn read_stdin(tx: &Sender<ClientEvent>) {
 
 #[cfg(windows)]
 use crossterm::event::{KeyEventKind, KeyModifiers};
-
-#[cfg(windows)]
-use crate::ClientEvent;
 
 #[cfg(windows)]
 fn check_ctrl(modifiers: KeyModifiers, c: char) -> Vec<u8> {
