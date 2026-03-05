@@ -1,5 +1,8 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use std::{io, path::Path};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -51,7 +54,13 @@ pub async fn receive_file(
             output_path.to_path_buf()
         };
 
-    let mut file = File::create(&output_path).await?;
+    let temp_path = {
+        let mut s = output_path.as_os_str().to_owned();
+        s.push(".part");
+        PathBuf::from(s)
+    };
+
+    let mut file = File::create(&temp_path).await?;
     let mut remaining = file_size;
     let mut buffer = [0u8; BUFFER_SIZE];
 
@@ -71,8 +80,11 @@ pub async fn receive_file(
         remaining -= n as u64;
         pb.inc(n as u64);
     }
-
     file.flush().await?;
+
+    drop(file);
+    tokio::fs::rename(&temp_path, output_path).await?;
+
     pb.finish_with_message(format!("{file_name} downloaded"));
     Ok(())
 }

@@ -103,7 +103,13 @@ async fn receive_file(
             output_path.to_path_buf()
         };
 
-    let mut file = File::create(&output_path).await?;
+    let temp_path = {
+        let mut s = output_path.as_os_str().to_owned();
+        s.push(".part");
+        PathBuf::from(s)
+    };
+
+    let mut file = File::create(&temp_path).await?;
 
     let log_output = output_path.canonicalize()?;
     log!("{session} is uploading {file_name} to {}", log_output.display());
@@ -129,6 +135,9 @@ async fn receive_file(
         "{session} finished uploading {file_name} to {}",
         log_output.display()
     );
+
+    drop(file);
+    tokio::fs::rename(&temp_path, output_path).await?;
 
     Ok(())
 }
