@@ -96,6 +96,7 @@ pub async fn handle_client_connection(
     Ok(tcp_rx.unsplit(tcp_tx_handle.await?))
 }
 
+const MAX_INPUT_FRAME: usize = 1024 * 1024;
 async fn read_tcp(
     mut tcp_rx: ReadHalf<Stream>,
     tx: Sender<PtyMessage>,
@@ -115,6 +116,7 @@ async fn read_tcp(
                 let mut len_buf = [0u8; 4];
                 break_if!(tcp_rx.read_exact(&mut len_buf).await.is_err());
                 let len = u32::from_be_bytes(len_buf) as usize;
+                break_if!(len > MAX_INPUT_FRAME);
                 let mut data = vec![0u8; len];
                 break_if!(tcp_rx.read_exact(&mut data).await.is_err());
                 break_if!(tx.send(PtyMessage::Input(data)).await.is_err());
