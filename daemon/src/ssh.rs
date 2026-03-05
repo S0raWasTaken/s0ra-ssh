@@ -96,6 +96,17 @@ pub async fn handle_client_connection(
     Ok(tcp_rx.unsplit(tcp_tx_handle.await?))
 }
 
+macro_rules! read_or_cancel {
+    ($token:expr, $read:expr) => {
+        select! {
+            () = $token.cancelled() => break,
+            result = $read => {
+                break_if!(result.is_err());
+            }
+        }
+    };
+}
+
 const MAX_INPUT_FRAME: usize = 1024 * 1024;
 async fn read_tcp(
     mut tcp_rx: ReadHalf<Stream>,
@@ -104,26 +115,22 @@ async fn read_tcp(
 ) -> ReadHalf<Stream> {
     loop {
         let mut type_buf = [0u8; 1];
-        select! {
-            () = token.cancelled() => break,
-            result = tcp_rx.read_exact(&mut type_buf) => {
-                break_if!(result.is_err());
-            }
-        }
+
+        read_or_cancel!(token, tcp_rx.read_exact(&mut type_buf));
 
         match SshMessage::from_byte(type_buf) {
             Some(SshMessage::Input) => {
                 let mut len_buf = [0u8; 4];
-                break_if!(tcp_rx.read_exact(&mut len_buf).await.is_err());
+                read_or_cancel!(token, tcp_rx.read_exact(&mut len_buf));
                 let len = u32::from_be_bytes(len_buf) as usize;
                 break_if!(len > MAX_INPUT_FRAME);
                 let mut data = vec![0u8; len];
-                break_if!(tcp_rx.read_exact(&mut data).await.is_err());
+                read_or_cancel!(token, tcp_rx.read_exact(&mut data));
                 break_if!(tx.send(PtyMessage::Input(data)).await.is_err());
             }
             Some(SshMessage::Resize) => {
                 let mut buf = [0u8; 4];
-                break_if!(tcp_rx.read_exact(&mut buf).await.is_err());
+                read_or_cancel!(token, tcp_rx.read_exact(&mut buf));
                 let cols = u16::from_be_bytes([buf[0], buf[1]]);
                 let rows = u16::from_be_bytes([buf[2], buf[3]]);
                 break_if!(
