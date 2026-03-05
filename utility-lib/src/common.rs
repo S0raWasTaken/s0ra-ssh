@@ -97,7 +97,9 @@ pub mod handshake {
             return Err(invalid_handshake);
         }
 
+        println!();
         println!("\x1b[1;31m░█░█░░█░█░█░ PRAISE THE CODE! ░█░█░░█░█░█░\x1b[0m");
+        println!();
 
         stream.write_all(&[session_type as u8]).await?;
         Ok(())
