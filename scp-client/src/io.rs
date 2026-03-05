@@ -31,7 +31,7 @@ pub async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
         if n == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "Source file changed during download",
+                "Source file changed during upload",
             ));
         }
         stream.write_all(&buffer[..n]).await?;
