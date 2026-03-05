@@ -137,13 +137,14 @@ async fn receive_file(
     }
 
     file.flush().await?;
+
+    drop(file);
+    tokio::fs::rename(&temp_path, output_path).await?;
+
     log!(
         "{session} finished uploading {file_name} to {}",
         log_output.display()
     );
-
-    drop(file);
-    tokio::fs::rename(&temp_path, output_path).await?;
 
     Ok(())
 }
