@@ -93,7 +93,7 @@ pub fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
 
 /// Performs the protocol handshake and keypair authentication with the server.
 ///
-/// Sends a `Shell` session type during the handshake, signs the server's
+/// Sends a session type during the handshake, signs the server's
 /// 256-byte challenge with the private key using `SshSig`/SHA-512, and
 /// verifies the server's response.
 ///
