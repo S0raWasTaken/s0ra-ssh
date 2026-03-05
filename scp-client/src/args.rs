@@ -29,7 +29,7 @@ pub enum ScpTarget {
 
 impl FromArgValue for ScpTarget {
     fn from_arg_value(value: &str) -> Result<Self, String> {
-        if let Some((host, path)) = value.split_once(':') {
+        if let Some((host, path)) = value.rsplit_once(':') {
             Ok(Self::Remote {
                 host: host.to_string(),
                 path: PathBuf::from(path),
