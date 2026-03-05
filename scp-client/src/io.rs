@@ -1,4 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
+use libssh0::common::SCP_BUFFER_SIZE;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -9,9 +10,6 @@ use tokio::{
 };
 
 use crate::Stream;
-
-pub const BUFFER_SIZE: usize = 8192;
-pub const BUFFER_SIZE_U64: u64 = BUFFER_SIZE as u64;
 
 pub async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
@@ -24,7 +22,7 @@ pub async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
 
     let pb = make_progress_bar(file_size, file_name);
 
-    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut buffer = [0u8; SCP_BUFFER_SIZE];
     loop {
         let n = file.read(&mut buffer).await?;
         if n == 0 {
@@ -62,12 +60,13 @@ pub async fn receive_file(
 
     let mut file = File::create(&temp_path).await?;
     let mut remaining = file_size;
-    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut buffer = [0u8; SCP_BUFFER_SIZE];
 
     let pb = make_progress_bar(file_size, file_name);
 
     while remaining > 0 {
-        let to_read = remaining.min(BUFFER_SIZE_U64) as usize;
+        #[expect(clippy::cast_possible_truncation)]
+        let to_read = remaining.min(SCP_BUFFER_SIZE as u64) as usize;
         let n = stream.read(&mut buffer[..to_read]).await?;
         if n == 0 {
             pb.abandon();

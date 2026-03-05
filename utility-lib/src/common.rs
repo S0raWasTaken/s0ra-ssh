@@ -36,6 +36,8 @@ impl Display for SessionType {
 
 pub const CHALLENGE_SIZE: usize = 256;
 
+pub const SCP_BUFFER_SIZE: usize = 8192;
+
 #[repr(u8)]
 pub enum ScpStatus {
     Continue = 0x00,

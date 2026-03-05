@@ -3,16 +3,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use libssh0::{common::ScpStatus, log, read, read_exact};
+use libssh0::{
+    common::{SCP_BUFFER_SIZE, ScpStatus},
+    log, read, read_exact,
+};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
 use crate::{Res, Stream, sessions::SessionInfo};
-
-const BUFFER_SIZE: usize = 8192;
-const BUFFER_SIZE_U64: u64 = BUFFER_SIZE as u64;
 
 // Server <- Client
 pub async fn handle_upload(
@@ -75,7 +75,7 @@ async fn send_file(
     stream.write_all(&file_size.to_be_bytes()).await?;
     stream.flush().await?;
 
-    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut buffer = [0u8; SCP_BUFFER_SIZE];
     loop {
         let n = file.read(&mut buffer).await?;
         if n == 0 {
@@ -120,10 +120,11 @@ async fn receive_file(
     log!("{session} is uploading {file_name} to {}", log_output.display());
 
     let mut remaining = file_size;
-    let mut buffer = [0u8; BUFFER_SIZE];
+    let mut buffer = [0u8; SCP_BUFFER_SIZE];
 
     while remaining > 0 {
-        let to_read = remaining.min(BUFFER_SIZE_U64) as usize;
+        #[expect(clippy::cast_possible_truncation)]
+        let to_read = remaining.min(SCP_BUFFER_SIZE as u64) as usize;
         let n = stream.read(&mut buffer[..to_read]).await?;
         if n == 0 {
             return Err(io::Error::new(
