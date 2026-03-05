@@ -1,9 +1,9 @@
 use super::Res;
-use crate::{
-    BoxedError, connection::handle_client_connection, context::Context,
-    fingerprint,
+use crate::{BoxedError, context::Context, fingerprint, scp, ssh};
+use libssh0::{
+    common::{CHALLENGE_SIZE, SessionType, handshake},
+    log, read, read_exact, timeout,
 };
-use libssh0::{log, read, read_exact, timeout};
 use ssh_key::{PublicKey, SshSig};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
@@ -18,7 +18,7 @@ pub async fn authenticate_and_accept_connection(
     let rate_limiter = Arc::clone(&context.rate_limiter);
 
     let ctx = Arc::clone(&context);
-    let (socket, public_key) = async move {
+    let (socket, (public_key, session_type)) = async move {
         let mut socket = timeout(ctx.acceptor.accept(stream)).await??;
 
         let public_key = timeout(authenticate(&mut socket, &authorized_keys))
@@ -34,10 +34,19 @@ pub async fn authenticate_and_accept_connection(
     log!("Authorized connection from {address}");
     context.rate_limiter.reset(address.ip());
 
-    let (session, _session_guard) =
-        context.register_session(fingerprint(&public_key), address)?;
+    let (session, _session_guard) = context.register_session(
+        fingerprint(&public_key),
+        address,
+        session_type,
+    )?;
 
-    let mut socket = handle_client_connection(socket, session).await?;
+    let mut socket = match session_type {
+        SessionType::Shell => {
+            ssh::handle_client_connection(socket, session).await?
+        }
+        SessionType::Upload => scp::handle_upload(socket, session).await?,
+        SessionType::Download => scp::handle_download(socket, session).await?,
+    };
 
     socket.shutdown().await?;
     Ok(())
@@ -46,24 +55,24 @@ pub async fn authenticate_and_accept_connection(
 pub async fn authenticate(
     mut stream: &mut TlsStream<TcpStream>,
     authorized_keys: &[PublicKey],
-) -> Res<PublicKey> {
-    handshake(stream).await?;
+) -> Res<(PublicKey, SessionType)> {
+    let session_type = handshake(stream).await?;
 
-    let challenge = rand::random::<[u8; 32]>();
+    let challenge = rand::random::<[u8; CHALLENGE_SIZE]>();
     stream.write_all(&challenge).await?;
 
     let signature_length =
         u32::from_be_bytes(read_exact!(stream, 4).await?) as usize;
 
     if signature_length > 4096 {
-        return kill_stream(stream, "Signature too large").await;
+        kill_stream(stream, "Signature too large").await?;
     }
 
     let signature_bytes = read!(stream, signature_length).await?;
 
     let signature = match SshSig::from_pem(signature_bytes) {
         Ok(sig) => sig,
-        Err(e) => return kill_stream(stream, e).await,
+        Err(e) => kill_stream(stream, e).await?,
     };
 
     let matched_key = match authorized_keys
@@ -71,33 +80,39 @@ pub async fn authenticate(
         .find(|e| e.verify("ssh0-auth", &challenge, &signature).is_ok())
     {
         Some(key) => key.clone(),
-        None => return kill_stream(stream, "Unauthorized").await,
+        None => kill_stream(stream, "Unauthorized").await?,
     };
 
     stream.write_all(&[1]).await?;
     stream.flush().await?;
 
-    Ok(matched_key)
+    Ok((matched_key, session_type))
 }
 
 // mut stream &mut is painful, but the macro requires it
-async fn handshake(mut stream: &mut TlsStream<TcpStream>) -> Res<()> {
-    stream.write_all(b"Keygen").await?;
+async fn handshake(mut stream: &mut TlsStream<TcpStream>) -> Res<SessionType> {
+    stream.write_all(&handshake::KEYGEN).await?;
     let response = read_exact!(stream, 6).await?;
 
-    if &response != b"Church" {
+    if response != handshake::CHURCH {
         kill_stream(stream, "Invalid handshake").await?;
     }
 
-    stream.write_all(b"PRAISE THE CODE!").await?;
+    stream.write_all(&handshake::PRAISE_THE_CODE).await?;
 
-    Ok(())
+    let Some(session_type) =
+        SessionType::from_byte(read_exact!(stream, 1).await?)
+    else {
+        kill_stream(stream, "Invalid session type").await?;
+    };
+
+    Ok(session_type)
 }
 
 async fn kill_stream(
     stream: &mut TlsStream<TcpStream>,
     error: impl Into<BoxedError>,
-) -> Res<PublicKey> /*Never*/ {
+) -> Res<!> {
     stream.write_all(&[0]).await?;
     stream.flush().await?;
     stream.shutdown().await?;

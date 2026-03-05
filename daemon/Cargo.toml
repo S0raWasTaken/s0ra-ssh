@@ -1,7 +1,7 @@
 [package]
 name = "ssh0-daemon"
-version = "1.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 libssh0 = {path = "../utility-lib", features = ["tokio"] }

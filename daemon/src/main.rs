@@ -1,3 +1,4 @@
+#![feature(never_type)] // WHY IS THIS NOT STABLE YET????
 use crate::{
     args::Args,
     context::{Context, HostAndPort},
@@ -10,17 +11,25 @@ use crate::{
 use libssh0::log;
 use ssh_key::PublicKey;
 use std::{fmt::Display, fs::create_dir_all, sync::Arc, time::Duration};
-use tokio::{io::AsyncWriteExt, net::TcpListener, spawn, sync::Semaphore};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+    spawn,
+    sync::Semaphore,
+};
+use tokio_rustls::server::TlsStream;
 
 pub type BoxedError = Box<dyn std::error::Error + Send + Sync>;
 pub type Res<T> = Result<T, BoxedError>;
+pub type Stream = TlsStream<TcpStream>;
 
 mod args;
-mod connection;
 mod context;
 mod keypair_auth;
 mod rate_limit;
+mod scp;
 mod sessions;
+mod ssh;
 mod tls;
 mod watcher;
 
