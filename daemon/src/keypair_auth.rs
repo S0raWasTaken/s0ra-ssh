@@ -44,8 +44,8 @@ pub async fn authenticate_and_accept_connection(
         SessionType::Shell => {
             ssh::handle_client_connection(socket, session).await?
         }
-        SessionType::Upload => scp::handle_upload(socket).await?,
-        SessionType::Download => scp::handle_download(socket).await?,
+        SessionType::Upload => scp::handle_upload(socket, session).await?,
+        SessionType::Download => scp::handle_download(socket, session).await?,
     };
 
     socket.shutdown().await?;

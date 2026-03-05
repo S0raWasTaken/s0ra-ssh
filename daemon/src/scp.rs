@@ -9,20 +9,24 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
-use crate::{Res, Stream};
+use crate::{Res, Stream, sessions::SessionInfo};
 
 const BUFFER_SIZE: usize = 8192;
 const BUFFER_SIZE_U64: u64 = BUFFER_SIZE as u64;
 
 // Server <- Client
-pub async fn handle_upload(mut stream: Stream) -> Res<Stream> {
+pub async fn handle_upload(
+    mut stream: Stream,
+    session: SessionInfo,
+) -> Res<Stream> {
     let output_path = get_path(&mut stream).await?;
     let file_name = get_filename(&mut stream).await?;
     let file_size = u64::from_be_bytes(read_exact!(stream, 8).await?);
 
     // No limit to file size :) have fun!
     if let Err(error) =
-        receive_file(&mut stream, &output_path, &file_name, file_size).await
+        receive_file(&mut stream, &output_path, &file_name, file_size, session)
+            .await
     {
         write_error_and_kill(&mut stream, &error.to_string()).await?;
     }
@@ -32,7 +36,10 @@ pub async fn handle_upload(mut stream: Stream) -> Res<Stream> {
 }
 
 // Server -> Client
-pub async fn handle_download(mut stream: Stream) -> Res<Stream> {
+pub async fn handle_download(
+    mut stream: Stream,
+    session: SessionInfo,
+) -> Res<Stream> {
     let path = get_path(&mut stream).await?;
 
     if tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_dir()) {
@@ -43,19 +50,26 @@ pub async fn handle_download(mut stream: Stream) -> Res<Stream> {
         .await?;
     }
 
-    if let Err(error) = send_file(&mut stream, &path).await {
+    if let Err(error) = send_file(&mut stream, &path, session).await {
         write_error_and_kill(&mut stream, &error.to_string()).await?;
     }
 
     success(&mut stream).await?;
+
     Ok(stream)
 }
 
-async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
+async fn send_file(
+    stream: &mut Stream,
+    path: &Path,
+    session: SessionInfo,
+) -> io::Result<()> {
     let mut file = File::open(path).await?;
     let file_size = file.metadata().await?.len();
     step(stream).await?;
-    log!("Sending file {}", path.canonicalize()?.display());
+
+    let log_path = path.canonicalize()?;
+    log!("{session} requested file {}", log_path.display());
 
     stream.write_all(&file_size.to_be_bytes()).await?;
     stream.flush().await?;
@@ -70,6 +84,8 @@ async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
     }
 
     stream.flush().await?;
+    log!("{session} successfully downloaded file {}", log_path.display());
+
     Ok(())
 }
 
@@ -78,6 +94,7 @@ async fn receive_file(
     output_path: &Path,
     file_name: &str,
     file_size: u64,
+    session: SessionInfo,
 ) -> io::Result<()> {
     let output_path =
         if tokio::fs::metadata(output_path).await.is_ok_and(|m| m.is_dir()) {
@@ -88,10 +105,8 @@ async fn receive_file(
 
     let mut file = File::create(&output_path).await?;
 
-    log!(
-        "Receiving file {file_name} to {}",
-        output_path.canonicalize()?.display()
-    );
+    let log_output = output_path.canonicalize()?;
+    log!("{session} is uploading {file_name} to {}", log_output.display());
 
     let mut remaining = file_size;
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -110,6 +125,11 @@ async fn receive_file(
     }
 
     file.flush().await?;
+    log!(
+        "{session} finished uploading {file_name} to {}",
+        log_output.display()
+    );
+
     Ok(())
 }
 
