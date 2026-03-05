@@ -31,7 +31,7 @@ pub fn define_session_type(
             ScpTarget::Local(local_file),
             ScpTarget::Remote { host, path: remote_output },
         ) => {
-            let local_file = dbg!(expand_tilde(local_file)?);
+            let local_file = expand_tilde(local_file)?;
 
             if !local_file.try_exists()? {
                 return Err(io::Error::new(NotFound, "Local file not found"));
@@ -64,7 +64,7 @@ pub fn define_session_type(
             ScpTarget::Remote { host, path: remote_file },
             ScpTarget::Local(local_output),
         ) => {
-            let local_output = dbg!(expand_tilde(local_output)?);
+            let local_output = expand_tilde(local_output)?;
             let file_name = remote_file
                 .file_name()
                 .ok_or(InvalidFilename)?
