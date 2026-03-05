@@ -114,8 +114,9 @@ pub async fn authenticate(
         .to_pem(LineEnding::default())?;
     let signature_bytes = signature.as_bytes();
 
-    #[expect(clippy::cast_possible_truncation)]
-    stream.write_all(&(signature_bytes.len() as u32).to_be_bytes()).await?;
+    stream
+        .write_all(&u32::try_from(signature_bytes.len())?.to_be_bytes())
+        .await?;
     stream.write_all(signature_bytes).await?;
 
     let result = read_exact!(stream, 1).await?;
