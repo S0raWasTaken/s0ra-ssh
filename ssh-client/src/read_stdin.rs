@@ -17,7 +17,7 @@ pub fn read_stdin(tx: &Sender<Vec<u8>>) {
 }
 
 #[cfg(windows)]
-pub fn read_stdin(tx: &Sender<Vec<u8>>) {
+pub fn read_stdin(tx: &Sender<ClientEvent>) {
     loop {
         use crossterm::event::{self, Event, KeyCode, KeyEvent};
 
@@ -45,7 +45,7 @@ pub fn read_stdin(tx: &Sender<Vec<u8>>) {
                     KeyCode::PageDown => vec![b'\x1b', b'[', b'6', b'~'],
                     _ => continue,
                 };
-                break_if!(tx.blocking_send(bytes).is_err());
+                break_if!(tx.blocking_send(ClientEvent::Input(bytes)).is_err());
             }
             Err(_) => break,
             _ => (),
@@ -55,6 +55,9 @@ pub fn read_stdin(tx: &Sender<Vec<u8>>) {
 
 #[cfg(windows)]
 use crossterm::event::{KeyEventKind, KeyModifiers};
+
+#[cfg(windows)]
+use crate::ClientEvent;
 
 #[cfg(windows)]
 fn check_ctrl(modifiers: KeyModifiers, c: char) -> Vec<u8> {

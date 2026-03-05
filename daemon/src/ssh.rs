@@ -4,22 +4,26 @@ use crate::sessions::SessionInfo;
 use super::{Res, print_err};
 use libssh0::DropGuard;
 use libssh0::break_if;
+use libssh0::common::SshMessage;
 use libssh0::log;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::{
     env,
     io::{Read, Write},
 };
+use tokio::io::ReadHalf;
 use tokio::{
-    io::{
-        AsyncReadExt, AsyncWrite, AsyncWriteExt, ErrorKind::UnexpectedEof,
-        WriteHalf,
-    },
+    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, WriteHalf},
     select, spawn,
     sync::mpsc::{Receiver, Sender, channel},
     task::spawn_blocking,
 };
 use tokio_util::sync::CancellationToken;
+
+pub enum PtyMessage {
+    Input(Vec<u8>),
+    Resize(u16, u16),
+}
 
 pub async fn handle_client_connection(
     socket: Stream,
@@ -43,7 +47,7 @@ pub async fn handle_client_connection(
     drop(pair.slave);
     let reader = pair.master.try_clone_reader()?;
     let writer = pair.master.take_writer()?;
-    let (mut tcp_rx, tcp_tx) = tokio::io::split(socket);
+    let (tcp_rx, tcp_tx) = tokio::io::split(socket);
     let (pty_tx, pty_rx) = channel::<Vec<u8>>(32);
 
     let mut pty_read = spawn_blocking(move || read_pty(reader, &pty_tx));
@@ -52,35 +56,82 @@ pub async fn handle_client_connection(
     let tcp_tx_handle =
         spawn(forward_to_tcp(pty_rx, tcp_tx, fwd_token.clone()));
 
-    let (write_tx, write_rx) = channel::<Vec<u8>>(32);
-    spawn_blocking(move || write_pty(writer, write_rx));
+    let (write_tx, write_rx) = channel::<PtyMessage>(32);
+    spawn_blocking(move || {
+        write_pty(writer, write_rx, pair.master.as_ref());
+    });
 
-    let mut buf = [0u8; 1024];
+    let (tcp_msg_tx, mut tcp_msg_rx) = channel::<PtyMessage>(32);
+    let mut tcp_read = spawn(read_tcp(tcp_rx, tcp_msg_tx, fwd_token.clone()));
+
+    let mut tcp_rx_result: Option<ReadHalf<Stream>> = None;
+
     loop {
         select! {
             _ = &mut pty_read => {
                 log!("{session} closed");
-                break
-            },
+                break;
+            }
             () = session.token.cancelled() => {
                 pty_read.abort();
                 break;
-            },
-            result = tcp_rx.read(&mut buf) => match result {
-                Ok(n) => break_if!(
-                    n == 0 || write_tx.send(buf[..n].to_vec()).await.is_err()
-                ),
-                Err(e) if e.kind() == UnexpectedEof => {
-                    log!("{session} closed");
-                    break;
-                }
-                Err(e) => return Err(e.into()),
+            }
+            result = &mut tcp_read => {
+                log!("{session} closed");
+                tcp_rx_result = result.ok();
+                break;
+            }
+            msg = tcp_msg_rx.recv() => match msg {
+                Some(msg) => break_if!(write_tx.send(msg).await.is_err()),
+                None => break,
             }
         }
     }
 
     fwd_token.cancel();
+    let tcp_rx = match tcp_rx_result {
+        Some(rx) => rx,
+        None => tcp_read.await?,
+    };
     Ok(tcp_rx.unsplit(tcp_tx_handle.await?))
+}
+
+async fn read_tcp(
+    mut tcp_rx: ReadHalf<Stream>,
+    tx: Sender<PtyMessage>,
+    token: CancellationToken,
+) -> ReadHalf<Stream> {
+    loop {
+        let mut type_buf = [0u8; 1];
+        select! {
+            () = token.cancelled() => break,
+            result = tcp_rx.read_exact(&mut type_buf) => {
+                break_if!(result.is_err());
+            }
+        }
+
+        match SshMessage::from_byte(type_buf) {
+            Some(SshMessage::Input) => {
+                let mut len_buf = [0u8; 4];
+                break_if!(tcp_rx.read_exact(&mut len_buf).await.is_err());
+                let len = u32::from_be_bytes(len_buf) as usize;
+                let mut data = vec![0u8; len];
+                break_if!(tcp_rx.read_exact(&mut data).await.is_err());
+                break_if!(tx.send(PtyMessage::Input(data)).await.is_err());
+            }
+            Some(SshMessage::Resize) => {
+                let mut buf = [0u8; 4];
+                break_if!(tcp_rx.read_exact(&mut buf).await.is_err());
+                let cols = u16::from_be_bytes([buf[0], buf[1]]);
+                let rows = u16::from_be_bytes([buf[2], buf[3]]);
+                break_if!(
+                    tx.send(PtyMessage::Resize(cols, rows)).await.is_err()
+                );
+            }
+            _ => break,
+        }
+    }
+    tcp_rx
 }
 
 pub fn read_pty(mut reader: Box<dyn Read + Send>, tx: &Sender<Vec<u8>>) {
@@ -95,10 +146,23 @@ pub fn read_pty(mut reader: Box<dyn Read + Send>, tx: &Sender<Vec<u8>>) {
     }
 }
 
-pub fn write_pty(mut writer: Box<dyn Write + Send>, mut rx: Receiver<Vec<u8>>) {
-    while let Some(data) = rx.blocking_recv() {
-        if writer.write_all(&data).is_err() {
-            break;
+pub fn write_pty(
+    mut writer: Box<dyn Write + Send>,
+    mut rx: Receiver<PtyMessage>,
+    master: &(dyn portable_pty::MasterPty + Send),
+) {
+    while let Some(msg) = rx.blocking_recv() {
+        match msg {
+            PtyMessage::Input(data) => {
+                if writer.write_all(&data).is_err() {
+                    break;
+                }
+            }
+            PtyMessage::Resize(cols, rows) => {
+                master
+                    .resize(PtySize { cols, rows, ..PtySize::default() })
+                    .ok();
+            }
         }
     }
 }
