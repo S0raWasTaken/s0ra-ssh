@@ -171,6 +171,7 @@ pub fn write_pty(
             PtyMessage::Resize(cols, rows) => {
                 master
                     .resize(PtySize { cols, rows, ..PtySize::default() })
+                    .inspect_err(print_err)
                     .ok();
             }
         }
