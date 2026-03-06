@@ -25,6 +25,17 @@ pub enum PtyMessage {
     Resize(u16, u16),
 }
 
+macro_rules! read_or_cancel {
+    ($token:expr, $read:expr) => {
+        select! {
+            () = $token.cancelled() => break,
+            result = $read => {
+                break_if!(result.is_err());
+            }
+        }
+    };
+}
+
 pub async fn handle_client_connection(
     socket: Stream,
     session: SessionInfo,
@@ -82,7 +93,7 @@ pub async fn handle_client_connection(
                 break;
             }
             msg = tcp_msg_rx.recv() => match msg {
-                Some(msg) => break_if!(write_tx.send(msg).await.is_err()),
+                Some(msg) => read_or_cancel!(session.token, write_tx.send(msg)),
                 None => break,
             }
         }
@@ -97,17 +108,6 @@ pub async fn handle_client_connection(
     };
 
     Ok(tcp_rx.unsplit(tcp_tx_handle.await?))
-}
-
-macro_rules! read_or_cancel {
-    ($token:expr, $read:expr) => {
-        select! {
-            () = $token.cancelled() => break,
-            result = $read => {
-                break_if!(result.is_err());
-            }
-        }
-    };
 }
 
 const MAX_INPUT_FRAME: usize = 1024 * 1024;
