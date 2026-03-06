@@ -64,7 +64,7 @@ pub async fn handle_client_connection(
     let (tcp_msg_tx, mut tcp_msg_rx) = channel::<PtyMessage>(32);
     let mut tcp_read = spawn(read_tcp(tcp_rx, tcp_msg_tx, fwd_token.clone()));
 
-    let mut tcp_rx_result: Option<ReadHalf<Stream>> = None;
+    let mut tcp_rx_result = None;
 
     loop {
         select! {
@@ -78,7 +78,7 @@ pub async fn handle_client_connection(
             }
             result = &mut tcp_read => {
                 log!("{session} closed");
-                tcp_rx_result = result.ok();
+                tcp_rx_result = Some(result);
                 break;
             }
             msg = tcp_msg_rx.recv() => match msg {
@@ -89,10 +89,13 @@ pub async fn handle_client_connection(
     }
 
     fwd_token.cancel();
+    drop(tcp_msg_rx);
+
     let tcp_rx = match tcp_rx_result {
-        Some(rx) => rx,
+        Some(result) => result?,
         None => tcp_read.await?,
     };
+
     Ok(tcp_rx.unsplit(tcp_tx_handle.await?))
 }
 
@@ -126,16 +129,14 @@ async fn read_tcp(
                 break_if!(len > MAX_INPUT_FRAME);
                 let mut data = vec![0u8; len];
                 read_or_cancel!(token, tcp_rx.read_exact(&mut data));
-                break_if!(tx.send(PtyMessage::Input(data)).await.is_err());
+                read_or_cancel!(token, tx.send(PtyMessage::Input(data)));
             }
             Some(SshMessage::Resize) => {
                 let mut buf = [0u8; 4];
                 read_or_cancel!(token, tcp_rx.read_exact(&mut buf));
                 let cols = u16::from_be_bytes([buf[0], buf[1]]);
                 let rows = u16::from_be_bytes([buf[2], buf[3]]);
-                break_if!(
-                    tx.send(PtyMessage::Resize(cols, rows)).await.is_err()
-                );
+                read_or_cancel!(token, tx.send(PtyMessage::Resize(cols, rows)));
             }
             _ => break,
         }
