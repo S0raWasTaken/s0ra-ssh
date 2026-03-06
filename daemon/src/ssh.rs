@@ -63,9 +63,8 @@ pub async fn handle_client_connection(
 
     let mut pty_read = spawn_blocking(move || read_pty(reader, &pty_tx));
 
-    let fwd_token = CancellationToken::new();
     let tcp_tx_handle =
-        spawn(forward_to_tcp(pty_rx, tcp_tx, fwd_token.clone()));
+        spawn(forward_to_tcp(pty_rx, tcp_tx, session.token.clone()));
 
     let (write_tx, write_rx) = channel::<PtyMessage>(32);
     spawn_blocking(move || {
@@ -73,7 +72,8 @@ pub async fn handle_client_connection(
     });
 
     let (tcp_msg_tx, mut tcp_msg_rx) = channel::<PtyMessage>(32);
-    let mut tcp_read = spawn(read_tcp(tcp_rx, tcp_msg_tx, fwd_token.clone()));
+    let mut tcp_read =
+        spawn(read_tcp(tcp_rx, tcp_msg_tx, session.token.clone()));
 
     let mut tcp_rx_result = None;
 
@@ -81,6 +81,7 @@ pub async fn handle_client_connection(
         select! {
             _ = &mut pty_read => {
                 log!("{session} closed");
+                session.token.cancel();
                 break;
             }
             () = session.token.cancelled() => {
@@ -90,6 +91,7 @@ pub async fn handle_client_connection(
             result = &mut tcp_read => {
                 log!("{session} closed");
                 tcp_rx_result = Some(result);
+                session.token.cancel();
                 break;
             }
             msg = tcp_msg_rx.recv() => match msg {
@@ -99,7 +101,8 @@ pub async fn handle_client_connection(
         }
     }
 
-    fwd_token.cancel();
+    session.token.cancel();
+
     drop(tcp_msg_rx);
 
     let tcp_rx = match tcp_rx_result {
