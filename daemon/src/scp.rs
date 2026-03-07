@@ -156,7 +156,7 @@ async fn receive_file(
         remaining -= n as u64;
     }
 
-    file.flush().await?;
+    file.sync_all().await?;
 
     drop(file);
     tokio::fs::rename(&temp_path, output_path).await?;
@@ -227,20 +227,20 @@ fn expand_tilde(path: PathBuf) -> Res<PathBuf> {
 
 #[inline]
 async fn step(stream: &mut Stream) -> io::Result<()> {
-    stream.write_all(&[ScpStatus::Continue as u8]).await?;
+    stream.write_all(&ScpStatus::Continue.to_byte()).await?;
     stream.flush().await
 }
 
 #[inline]
 async fn success(stream: &mut Stream) -> io::Result<()> {
-    stream.write_all(&[ScpStatus::Success as u8]).await?;
+    stream.write_all(&ScpStatus::Success.to_byte()).await?;
     stream.flush().await
 }
 
 // "we had an error" > "error length" > "error" > "flush" > "shutdown stream"
 async fn write_error_and_kill(stream: &mut Stream, error: &str) -> Res<!> {
     log!(e "Writing error to client");
-    stream.write_all(&[ScpStatus::Error as u8]).await?;
+    stream.write_all(&ScpStatus::Error.to_byte()).await?;
     stream.write_all(&u32::try_from(error.len())?.to_be_bytes()).await?;
     stream.write_all(error.as_bytes()).await?;
 

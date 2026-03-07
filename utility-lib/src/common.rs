@@ -1,23 +1,13 @@
 use std::fmt::Display;
 
+use ssh0_proc_macro::{FromByte, ToByte};
+
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromByte, ToByte)]
 pub enum SessionType {
     Shell = 0x00,
     Upload = 0x01,
     Download = 0x02,
-}
-
-impl SessionType {
-    #[must_use]
-    pub fn from_byte(byte: [u8; 1]) -> Option<Self> {
-        match byte[0] {
-            0x00 => Some(Self::Shell),
-            0x01 => Some(Self::Upload),
-            0x02 => Some(Self::Download),
-            _ => None,
-        }
-    }
 }
 
 impl Display for SessionType {
@@ -38,39 +28,18 @@ pub const CHALLENGE_SIZE: usize = 256;
 pub const SCP_BUFFER_SIZE: usize = 8192;
 
 #[repr(u8)]
+#[derive(FromByte, ToByte)]
 pub enum SshMessage {
     Input = 0x00,
     Resize = 0x01,
 }
 
-impl SshMessage {
-    #[must_use]
-    pub fn from_byte(byte: [u8; 1]) -> Option<Self> {
-        match byte[0] {
-            0x00 => Some(Self::Input),
-            0x01 => Some(Self::Resize),
-            _ => None,
-        }
-    }
-}
-
 #[repr(u8)]
+#[derive(FromByte, ToByte)]
 pub enum ScpStatus {
     Continue = 0x00,
     Success = 0x01,
     Error = 0xFF,
-}
-
-impl ScpStatus {
-    #[must_use]
-    pub fn from_byte(byte: [u8; 1]) -> Option<Self> {
-        match byte[0] {
-            0x00 => Some(Self::Continue),
-            0x01 => Some(Self::Success),
-            0xFF => Some(Self::Error),
-            _ => None,
-        }
-    }
 }
 
 #[cfg(feature = "tokio")]
@@ -98,6 +67,7 @@ pub mod handshake {
     pub async fn handshake_client(
         mut stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
         session_type: SessionType,
+        print_banner: bool,
     ) -> io::Result<()> {
         let invalid_handshake = Error::new(InvalidData, "Invalid Handshake");
 
@@ -113,11 +83,15 @@ pub mod handshake {
             return Err(invalid_handshake);
         }
 
-        println!();
-        println!("\x1b[1;31m░█░█░░█░█░█░ PRAISE THE CODE! ░█░█░░█░█░█░\x1b[0m");
-        println!();
+        if print_banner {
+            println!();
+            println!(
+                "\x1b[1;31m░█░█░░█░█░█░ PRAISE THE CODE! ░█░█░░█░█░█░\x1b[0m"
+            );
+            println!();
+        }
 
-        stream.write_all(&[session_type as u8]).await?;
+        stream.write_all(&session_type.to_byte()).await?;
         Ok(())
     }
 }
