@@ -19,7 +19,7 @@ use crate::Stream;
 pub async fn send_file(
     stream: &mut Stream,
     path: &Path,
-    multi_progress_bar: MultiProgress,
+    multi_progress_bar: &MultiProgress,
 ) -> io::Result<()> {
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
 
@@ -29,7 +29,7 @@ pub async fn send_file(
     stream.write_all(&file_size.to_be_bytes()).await?;
     stream.flush().await?;
 
-    let pb = make_progress_bar(file_size, file_name, &multi_progress_bar);
+    let pb = make_progress_bar(file_size, file_name, multi_progress_bar);
 
     let mut remaining = file_size;
     let mut buffer = [0u8; SCP_BUFFER_SIZE];
@@ -60,7 +60,7 @@ pub async fn receive_file(
     output_path: &Path,
     file_name: &str,
     file_size: u64,
-    multi_progress_bar: MultiProgress,
+    multi_progress_bar: &MultiProgress,
 ) -> io::Result<()> {
     let output_path =
         if tokio::fs::metadata(output_path).await.is_ok_and(|m| m.is_dir()) {
@@ -89,7 +89,7 @@ pub async fn receive_file(
     let mut remaining = file_size;
     let mut buffer = [0u8; SCP_BUFFER_SIZE];
 
-    let pb = make_progress_bar(file_size, file_name, &multi_progress_bar);
+    let pb = make_progress_bar(file_size, file_name, multi_progress_bar);
 
     while remaining > 0 {
         #[expect(clippy::cast_possible_truncation)]

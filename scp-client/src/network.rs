@@ -72,7 +72,7 @@ pub async fn upload(
     source: &Path,
     remote_output: &OsStr,
     file_name: &str,
-    multi_progress_bar: MultiProgress,
+    multi_progress_bar: &MultiProgress,
 ) -> Res<()> {
     send_path(&mut stream, remote_output).await?;
 
@@ -113,7 +113,7 @@ pub async fn download(
     remote_source: &OsStr,
     destination: &Path,
     file_name: &str,
-    multi_progress_bar: MultiProgress,
+    multi_progress_bar: &MultiProgress,
 ) -> Res<()> {
     send_path(&mut stream, remote_source).await?;
     recv_ok(&mut stream).await?;

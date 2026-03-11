@@ -164,7 +164,7 @@ async fn file_transfer_session(
                 &session.source_path,
                 session.destination.as_os_str(),
                 &session.source_name,
-                multi_progress_bar,
+                &multi_progress_bar,
             )
             .await?;
         }
@@ -174,7 +174,7 @@ async fn file_transfer_session(
                 session.source_path.as_os_str(),
                 &session.destination,
                 &session.source_name,
-                multi_progress_bar,
+                &multi_progress_bar,
             )
             .await?;
         }
