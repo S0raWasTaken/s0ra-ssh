@@ -163,6 +163,13 @@ impl Args {
                 matches!(target, ScpTarget::Remote { glob: true, .. })
             });
 
+        if globs.iter().any(|_| true)
+            && matches!(destination, ScpTarget::Remote { .. })
+        {
+            eprintln!("Glob patterns are only supported for downloads");
+            return Err(INVALID.into());
+        }
+
         let unparsed_globs: Vec<UnparsedGlob> =
             globs.into_iter().cloned().map(UnparsedGlob::from).collect();
 
