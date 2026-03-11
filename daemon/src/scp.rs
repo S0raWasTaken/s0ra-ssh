@@ -288,7 +288,7 @@ async fn get_path(mut stream: &mut Stream) -> Res<PathBuf> {
 
     step(stream).await?;
 
-    expand_tilde(PathBuf::from(path_utf8.replace('\\', "/")))
+    expand_tilde(PathBuf::from(path_utf8))
 }
 
 fn expand_tilde(path: PathBuf) -> Res<PathBuf> {

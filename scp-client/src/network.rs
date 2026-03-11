@@ -169,10 +169,17 @@ async fn recv_any(mut stream: &mut Stream) -> Res<ScpStatus> {
 }
 
 async fn send_path(stream: &mut Stream, path: &OsStr) -> Res<()> {
-    let remote_output_path_size = u32::to_be_bytes(u32::try_from(path.len())?);
+    let path_str =
+        path.to_str().ok_or("Path must be valid UTF-8 for transmission")?;
+
+    #[cfg(windows)]
+    let path_str = path_str.replace('\\', "/");
+
+    let remote_output_path_size =
+        u32::to_be_bytes(u32::try_from(path_str.len())?);
     stream.write_all(&remote_output_path_size).await?;
     recv_ok(stream).await?;
-    stream.write_all(path.as_encoded_bytes()).await?;
+    stream.write_all(path_str.as_bytes()).await?;
     recv_ok(stream).await?;
     Ok(())
 }
