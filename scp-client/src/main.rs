@@ -3,13 +3,13 @@ mod args;
 mod io;
 mod network;
 
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use indicatif::MultiProgress;
 use libssh0::{BoxedError, Res, common::SessionType, timeout};
 use libssh0_client::{authenticate, connect_tls, load_private_key};
 use ssh_key::PrivateKey;
-use tokio::{net::TcpStream, task::JoinSet};
+use tokio::{fs::metadata, net::TcpStream, task::JoinSet};
 use tokio_rustls::client::TlsStream;
 
 use crate::args::{Args, FileInfo, UnparsedGlob};
@@ -49,6 +49,8 @@ async fn main() -> Res<()> {
         port,
     )
     .await?;
+
+    pre_flight_checks(session_type, &source_files, &destination).await?;
 
     let multi_progress_bar = MultiProgress::new();
     multi_progress_bar.set_move_cursor(true);
@@ -101,6 +103,42 @@ async fn main() -> Res<()> {
                 multi_progress_bar.clone(),
                 print_banner,
             ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn pre_flight_checks(
+    session_type: SessionType,
+    source_files: &[FileInfo],
+    destination: &FileInfo,
+) -> Res<()> {
+    if !matches!(session_type, SessionType::Download) {
+        return Ok(());
+    }
+
+    let destination_is_dir =
+        metadata(&destination.path).await.is_ok_and(|m| m.is_dir());
+
+    if source_files.len() > 1 && !destination_is_dir {
+        return Err(
+            "Destination must be an existing directory for multiple downloads"
+                .into(),
+        );
+    }
+
+    if !destination_is_dir || source_files.len() <= 1 {
+        return Ok(());
+    }
+
+    let mut seen = HashSet::new();
+    for source in source_files {
+        let output = destination.path.join(&source.name);
+        if !seen.insert(output) {
+            return Err(
+                "Two sources resolve to the same local output path".into()
+            );
         }
     }
 
