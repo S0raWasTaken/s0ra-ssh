@@ -47,7 +47,7 @@ impl FromArgValue for ScpTarget {
         }
 
         if let Some(bracket_end) = value.find("]:") {
-            let host = &value[..=bracket_end]; // includes the ]
+            let host = &value[1..bracket_end]; // strip [ and ]
             let path = &value[bracket_end + 2..];
             return Ok(Self::Remote {
                 host: host.to_string(),
