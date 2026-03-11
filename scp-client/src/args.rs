@@ -22,7 +22,7 @@ struct CommandArgs {
     #[argh(option, short = 'i')]
     pub key_path: Option<PathBuf>,
 
-    /// number of transfers at once (default: 15)
+    /// number of transfers at once (default: 15)du
     #[argh(option, short = 'u', default = "15")]
     pub task_limit: usize,
 }
@@ -104,7 +104,7 @@ const EASTER_EGG: &str = "\
 Nice try. The program would quit instantly anyway :)";
 
 const INVALID_ARGS: &str = "\
-Invalid arguments: exactly one source and one dcestination must be remote";
+Invalid arguments: exactly one source and one destination must be remote";
 
 const GLOB_ON_DESTINATION: &str = "Glob not supported on destination";
 
