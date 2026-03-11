@@ -51,6 +51,7 @@ async fn main() -> Res<()> {
     .await?;
 
     let multi_progress_bar = MultiProgress::new();
+    multi_progress_bar.set_move_cursor(true);
 
     let mut task_set = JoinSet::new();
 
@@ -102,8 +103,6 @@ async fn main() -> Res<()> {
             ));
         }
     }
-
-    multi_progress_bar.set_move_cursor(true);
 
     Ok(())
 }
