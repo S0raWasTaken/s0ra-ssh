@@ -18,6 +18,7 @@ use tokio::io::AsyncWriteExt;
 pub async fn probe_parse_glob(
     mut stream: Stream,
     path: PathBuf,
+    host: String,
 ) -> Res<Vec<FileInfo>> {
     stream.write_all(&ClientProbeMessage::Glob.to_byte()).await?;
     send_path(&mut stream, path.as_os_str()).await?;
@@ -44,6 +45,7 @@ pub async fn probe_parse_glob(
                 .ok_or("This shouldn't happen ever")?
                 .to_string_lossy()
                 .to_string(),
+            host: Some(host.clone()),
         });
         recv_ok(&mut stream).await?;
     }

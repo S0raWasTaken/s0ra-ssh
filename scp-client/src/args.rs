@@ -51,11 +51,12 @@ impl FromArgValue for ScpTarget {
 pub struct FileInfo {
     pub path: PathBuf,
     pub name: String,
+    pub host: Option<String>, // Some(String) when SessionType is download
 }
 
 impl FileInfo {
-    pub fn new(path: PathBuf, name: String) -> Self {
-        Self { path, name }
+    pub fn new(path: PathBuf, name: String, host: Option<String>) -> Self {
+        Self { path, name, host }
     }
 }
 
@@ -80,9 +81,8 @@ pub struct Args {
     pub session_type: SessionType,
     pub source_files: Vec<FileInfo>,
     pub unparsed_globs: Vec<UnparsedGlob>,
-    pub destination: PathBuf,
+    pub destination: FileInfo,
     pub key_path: Option<PathBuf>,
-    pub host: String,
     pub port: u16,
     pub task_limit: usize,
 }
@@ -149,9 +149,9 @@ impl Args {
             ScpTarget::Remote { .. } => SessionType::Upload,
         };
 
-        let (host, source_files, destination) = match session_type {
+        let (source_files, destination) = match session_type {
             SessionType::Upload => {
-                let ScpTarget::Remote { host, path, .. } = destination else {
+                let ScpTarget::Remote { path, host, .. } = destination else {
                     unreachable!()
                 };
                 let sources = source_files
@@ -161,25 +161,26 @@ impl Args {
                         ScpTarget::Remote { .. } => unreachable!(),
                     })
                     .collect::<io::Result<Vec<_>>>()?;
-                (host.clone(), sources, expand_tilde(path.clone())?)
+                (
+                    sources,
+                    FileInfo::new(
+                        expand_tilde(path.clone())?,
+                        String::new(), /*Won't be used*/
+                        Some(host.clone()),
+                    ),
+                )
             }
             SessionType::Download => {
-                let host = source_files
-                    .iter()
-                    .find_map(|f| match f {
-                        ScpTarget::Remote { host, .. } => Some(host.clone()),
-                        ScpTarget::Local(_) => None,
-                    })
-                    .or_else(|| {
-                        unparsed_globs.iter().map(|f| f.host.clone()).next()
-                    })
-                    .ok_or("No remote source found")?;
                 let sources = source_files
                     .iter()
                     .map(|f| match f {
-                        ScpTarget::Remote { path, .. } => {
+                        ScpTarget::Remote { path, host, .. } => {
                             let name = extract_remote_filename(path)?;
-                            Ok(FileInfo::new(path.clone(), name))
+                            Ok(FileInfo::new(
+                                path.clone(),
+                                name,
+                                Some(host.clone()),
+                            ))
                         }
                         ScpTarget::Local(_) => unreachable!(),
                     })
@@ -187,7 +188,14 @@ impl Args {
                 let ScpTarget::Local(dest) = destination else {
                     unreachable!()
                 };
-                (host, sources, expand_tilde(dest.clone())?)
+                (
+                    sources,
+                    FileInfo::new(
+                        expand_tilde(dest.clone())?,
+                        String::new(),
+                        None,
+                    ),
+                )
             }
             SessionType::Shell | SessionType::Probe => unreachable!(),
         };
@@ -196,7 +204,6 @@ impl Args {
             session_type,
             source_files,
             destination,
-            host,
             key_path: args.key_path,
             port: args.port,
             unparsed_globs,
@@ -250,7 +257,7 @@ pub fn validate_local_source(path: PathBuf) -> io::Result<FileInfo> {
             io::Error::new(InvalidData, "File name is not valid UTF-8")
         })?;
 
-    Ok(FileInfo::new(path, file_name))
+    Ok(FileInfo::new(path, file_name, None))
 }
 
 pub fn extract_remote_filename(path: &Path) -> io::Result<String> {

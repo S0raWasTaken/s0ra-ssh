@@ -34,7 +34,6 @@ async fn main() -> Res<()> {
         unparsed_globs,
         destination,
         key_path,
-        host,
         port,
         task_limit,
     } = Args::from_argh()?;
@@ -58,15 +57,19 @@ async fn main() -> Res<()> {
     let mut sources = source_files.into_iter();
 
     for source in sources.by_ref().take(task_limit) {
+        let destination_host = destination.host.clone();
+        let destination = destination.path.clone();
+
         let session = Session {
-            host: host.clone(),
+            host: source.host.or(destination_host).unwrap(), // Shouldn't fail
             port,
             source_path: source.path.clone(),
             source_name: source.name.clone(),
-            destination: destination.clone(),
+            destination,
             private_key: private_key.clone(),
             kind: session_type,
         };
+
         task_set.spawn(file_transfer_session(
             session,
             multi_progress_bar.clone(),
@@ -79,15 +82,19 @@ async fn main() -> Res<()> {
         result??;
 
         if let Some(source) = sources.next() {
+            let destination_host = destination.host.clone();
+            let destination = destination.path.clone();
+
             let session = Session {
-                host: host.clone(),
+                host: source.host.or(destination_host).unwrap(), // Shouldn't fail
                 port,
                 source_path: source.path.clone(),
                 source_name: source.name.clone(),
-                destination: destination.clone(),
+                destination,
                 private_key: private_key.clone(),
                 kind: session_type,
             };
+
             task_set.spawn(file_transfer_session(
                 session,
                 multi_progress_bar.clone(),
@@ -127,7 +134,7 @@ async fn parse_globs(
         .await??;
         *print_banner = false;
 
-        let list = network::probe_parse_glob(stream, path).await?;
+        let list = network::probe_parse_glob(stream, path, host).await?;
         parsed_globs.push(list);
     }
 
