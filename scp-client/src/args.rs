@@ -46,7 +46,13 @@ impl FromArgValue for ScpTarget {
             return Ok(Self::Local(PathBuf::from(value)));
         }
 
-        if let Some(bracket_end) = value.find("]:") {
+        if value.starts_with('[') {
+            let Some(bracket_end) = value.find("]:") else {
+                return Err("Malformed bracketed remote target".into());
+            };
+            if bracket_end == 1 {
+                return Err("Empty host in bracketed remote target".into());
+            }
             let host = &value[1..bracket_end]; // strip [ and ]
             let path = &value[bracket_end + 2..];
             return Ok(Self::Remote {
@@ -64,6 +70,7 @@ impl FromArgValue for ScpTarget {
             return Ok(Self::Local(PathBuf::from(value)));
         }
 
+        #[cfg(windows)]
         if let Some(rest) =
             value.strip_prefix(|c: char| c.is_ascii_alphabetic())
             && (rest.starts_with(":\\") || rest.starts_with(":/"))
@@ -91,7 +98,10 @@ impl FromArgValue for ScpTarget {
 pub struct FileInfo {
     pub path: PathBuf,
     pub name: String,
-    pub host: Option<String>, // Some(String) when SessionType is download
+    // For destination value, is Some when SessionType is Upload.
+    // For sources, is some when SessionType is Download.
+    // Can be safely unwrapped given these conditions.
+    pub host: Option<String>,
 }
 
 impl FileInfo {
