@@ -70,14 +70,6 @@ impl FromArgValue for ScpTarget {
             return Ok(Self::Local(PathBuf::from(value)));
         }
 
-        #[cfg(windows)]
-        if let Some(rest) =
-            value.strip_prefix(|c: char| c.is_ascii_alphabetic())
-            && (rest.starts_with(":\\") || rest.starts_with(":/"))
-        {
-            return Ok(Self::Local(PathBuf::from(value)));
-        }
-
         if let Some((host, path)) = value.split_once(':')
             && !host.is_empty()
             && !host.contains('/')
@@ -187,8 +179,7 @@ impl Args {
                 matches!(target, ScpTarget::Remote { glob: true, .. })
             });
 
-        if globs.iter().any(|_| true)
-            && matches!(destination, ScpTarget::Remote { .. })
+        if !globs.is_empty() && matches!(destination, ScpTarget::Remote { .. })
         {
             eprintln!("Glob patterns are only supported for downloads");
             return Err(INVALID.into());
