@@ -46,10 +46,9 @@ impl FromArgValue for ScpTarget {
             return Ok(Self::Local(PathBuf::from(value)));
         }
 
-        if value.starts_with('[') {
-            let Some(bracket_end) = value.find("]:") else {
-                return Err("Malformed bracketed remote target".into());
-            };
+        if value.starts_with('[')
+            && let Some(bracket_end) = value.find("]:")
+        {
             if bracket_end == 1 {
                 return Err("Empty host in bracketed remote target".into());
             }
@@ -152,7 +151,7 @@ const EASTER_EGG: &str = "\
 Nice try. The program would quit instantly anyway :)";
 
 const INVALID_ARGS: &str = "\
-Invalid arguments: exactly one source and one destination must be remote";
+Invalid arguments: provide at least one source and one destination";
 
 const GLOB_ON_DESTINATION: &str = "Glob not supported on destination";
 
