@@ -1,5 +1,6 @@
 use dirs::config_dir;
 use libssh0::{
+    BoxedError, Res,
     common::{CHALLENGE_SIZE, SessionType, handshake::handshake_client},
     prompt_passphrase, read_exact, timeout,
 };
@@ -15,11 +16,8 @@ use tokio_rustls::{
 };
 
 use crate::fingerprint::FingerprintCheck;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::{error::Error, path::PathBuf};
-
-pub type BoxedError = Box<dyn Error + Send + Sync>;
-pub type Res<T> = Result<T, BoxedError>;
 
 mod fingerprint;
 
@@ -102,10 +100,11 @@ pub fn load_private_key(key_path: Option<PathBuf>) -> Res<PrivateKey> {
 /// computed, or the server rejects the authentication.
 pub async fn authenticate(
     mut stream: &mut (impl AsyncRead + AsyncWrite + Unpin),
-    private_key: PrivateKey,
+    private_key: &PrivateKey,
     session_type: SessionType,
+    print_banner: bool,
 ) -> Res<()> {
-    handshake_client(stream, session_type).await?;
+    handshake_client(stream, session_type, print_banner).await?;
 
     let challenge = read_exact!(stream, CHALLENGE_SIZE).await?;
 

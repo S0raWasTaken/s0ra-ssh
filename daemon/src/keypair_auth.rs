@@ -1,6 +1,6 @@
-use super::Res;
-use crate::{BoxedError, context::Context, fingerprint, scp, ssh};
+use crate::{context::Context, fingerprint, scp, ssh};
 use libssh0::{
+    BoxedError, Res,
     common::{CHALLENGE_SIZE, SessionType, handshake},
     log, read, read_exact, timeout,
 };
@@ -46,6 +46,7 @@ pub async fn authenticate_and_accept_connection(
         }
         SessionType::Upload => scp::handle_upload(socket, session).await?,
         SessionType::Download => scp::handle_download(socket, session).await?,
+        SessionType::Probe => scp::handle_probe(socket, session).await?,
     };
 
     socket.shutdown().await?;

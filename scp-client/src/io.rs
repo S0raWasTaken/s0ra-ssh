@@ -1,9 +1,12 @@
-use indicatif::{ProgressBar, ProgressStyle};
-use libssh0::{DropGuard, common::SCP_BUFFER_SIZE};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use libssh0::{DropGuard, common::scp::SCP_BUFFER_SIZE};
 use std::{
     io,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering::Relaxed},
+    sync::atomic::{
+        AtomicBool,
+        Ordering::{Acquire, Release},
+    },
 };
 use tokio::{
     fs::File,
@@ -13,7 +16,11 @@ use tokio::{
 
 use crate::Stream;
 
-pub async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
+pub async fn send_file(
+    stream: &mut Stream,
+    path: &Path,
+    multi_progress_bar: &MultiProgress,
+) -> io::Result<()> {
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
 
     let mut file = File::open(path).await?;
@@ -22,7 +29,7 @@ pub async fn send_file(stream: &mut Stream, path: &Path) -> io::Result<()> {
     stream.write_all(&file_size.to_be_bytes()).await?;
     stream.flush().await?;
 
-    let pb = make_progress_bar(file_size, file_name);
+    let pb = make_progress_bar(file_size, file_name, multi_progress_bar);
 
     let mut remaining = file_size;
     let mut buffer = [0u8; SCP_BUFFER_SIZE];
@@ -53,6 +60,7 @@ pub async fn receive_file(
     output_path: &Path,
     file_name: &str,
     file_size: u64,
+    multi_progress_bar: &MultiProgress,
 ) -> io::Result<()> {
     let output_path =
         if tokio::fs::metadata(output_path).await.is_ok_and(|m| m.is_dir()) {
@@ -70,7 +78,7 @@ pub async fn receive_file(
     let success = AtomicBool::new(false);
     let handle = Handle::current();
     let _part_guard = DropGuard::new((), |()| {
-        if !success.load(Relaxed) {
+        if !success.load(Acquire) {
             let temp_path_copy = temp_path.clone();
 
             handle.spawn(tokio::fs::remove_file(temp_path_copy));
@@ -81,7 +89,7 @@ pub async fn receive_file(
     let mut remaining = file_size;
     let mut buffer = [0u8; SCP_BUFFER_SIZE];
 
-    let pb = make_progress_bar(file_size, file_name);
+    let pb = make_progress_bar(file_size, file_name, multi_progress_bar);
 
     while remaining > 0 {
         #[expect(clippy::cast_possible_truncation)]
@@ -98,24 +106,27 @@ pub async fn receive_file(
         remaining -= n as u64;
         pb.inc(n as u64);
     }
-    file.flush().await?;
+    file.sync_all().await?;
 
     drop(file);
     tokio::fs::rename(&temp_path, output_path).await?;
 
-    success.store(true, Relaxed);
+    success.store(true, Release);
 
     pb.finish_with_message(format!("{file_name} downloaded"));
     Ok(())
 }
 
-fn make_progress_bar(file_size: u64, file_name: &str) -> ProgressBar {
-    let pb = ProgressBar::new(file_size);
+const TEMPLATE: &str = "[{elapsed_precise}] [{bar:40.red.bold/red.bold}] {bytes}/{total_bytes} ({eta}) {msg}";
+fn make_progress_bar(
+    file_size: u64,
+    file_name: &str,
+    multi_progress_bar: &MultiProgress,
+) -> ProgressBar {
+    let pb = multi_progress_bar.add(ProgressBar::new(file_size));
     pb.set_style(
         ProgressStyle::default_bar()
-            .template(
-                "{msg} [{elapsed_precise}] [{bar:40.red.bold/red.bold}] {bytes}/{total_bytes} ({eta})",
-            )
+            .template(TEMPLATE)
             .unwrap()
             .progress_chars("██░"),
     );

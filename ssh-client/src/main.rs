@@ -1,11 +1,11 @@
 use crate::{args::Args, read_stdin::read_stdin};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use libssh0::{
-    DropGuard, break_if,
+    DropGuard, Res, break_if,
     common::{SessionType, SshMessage},
     timeout,
 };
-use libssh0_client::{Res, authenticate, connect_tls, load_private_key};
+use libssh0_client::{authenticate, connect_tls, load_private_key};
 use std::{
     io::{ErrorKind::UnexpectedEof, Write, stdout},
     process::exit,
@@ -34,7 +34,7 @@ async fn main() -> Res<()> {
 
     let mut stream = connect_tls(&host, port).await?;
 
-    timeout(authenticate(&mut stream, private_key, SessionType::Shell))
+    timeout(authenticate(&mut stream, &private_key, SessionType::Shell, true))
         .await??;
 
     let (mut tcp_rx, tcp_tx) = tokio::io::split(stream);
@@ -104,7 +104,7 @@ async fn forward_to_server<S: AsyncWrite>(
     while let Some(event) = rx.recv().await {
         break_if!(match event {
             ClientEvent::Input(data) => {
-                tcp_tx.write_all(&[SshMessage::Input as u8]).await.is_err()
+                tcp_tx.write_all(&SshMessage::Input.to_byte()).await.is_err()
                     || tcp_tx
                         .write_all(&(data.len() as u32).to_be_bytes())
                         .await
@@ -112,7 +112,7 @@ async fn forward_to_server<S: AsyncWrite>(
                     || tcp_tx.write_all(&data).await.is_err()
             }
             ClientEvent::Resize(columns, rows) => {
-                tcp_tx.write_all(&[SshMessage::Resize as u8]).await.is_err()
+                tcp_tx.write_all(&SshMessage::Resize.to_byte()).await.is_err()
                     || tcp_tx.write_all(&columns.to_be_bytes()).await.is_err()
                     || tcp_tx.write_all(&rows.to_be_bytes()).await.is_err()
             }

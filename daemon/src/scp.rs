@@ -5,17 +5,92 @@ use std::{
 };
 
 use libssh0::{
-    DropGuard,
-    common::{SCP_BUFFER_SIZE, ScpStatus},
+    BoxedError, DropGuard,
+    common::scp::{ClientProbeMessage, SCP_BUFFER_SIZE, ScpStatus},
     log, read, read_exact,
 };
+
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
     runtime::Handle,
+    task::spawn_blocking,
 };
+use wax::{Glob, walk::Entry};
 
 use crate::{Res, Stream, sessions::SessionInfo};
+
+pub async fn handle_probe(
+    mut stream: Stream,
+    session: SessionInfo,
+) -> Res<Stream> {
+    match ClientProbeMessage::from_byte(read_exact!(stream, 1).await?) {
+        Some(ClientProbeMessage::Glob) => {
+            if let Err(error) = ls_expand_glob(&mut stream, session).await {
+                write_error_and_kill(&mut stream, &error.to_string()).await?;
+            }
+        }
+        None => {
+            write_error_and_kill(&mut stream, "Unsupported").await?;
+        }
+    }
+    Ok(stream)
+}
+
+// Sends just file names in the requested directory
+// get_path
+// send step if entries are available, or success if dir is empty
+// send entries vector length
+// for each entry:
+//   send entry length
+//   send entry bytes
+//
+// send success
+async fn ls_expand_glob(stream: &mut Stream, session: SessionInfo) -> Res<()> {
+    let path = get_path(stream).await?;
+    log!("Probe {session}: ls {}", path.display());
+
+    let matched_paths = spawn_blocking(move || {
+        let path = path.as_os_str().to_string_lossy();
+        let glob = Glob::new(&path)?;
+        let paths = glob
+            .walk(expand_tilde(PathBuf::from("~"))?)
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                if e.file_type().is_file() {
+                    Some(e.path().as_os_str().to_os_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok::<_, BoxedError>(paths)
+    })
+    .await??;
+
+    if matched_paths.is_empty() {
+        success(stream).await?;
+        return Ok(());
+    }
+
+    step(stream).await?;
+
+    let entries_len = u32::to_be_bytes(u32::try_from(matched_paths.len())?);
+    stream.write_all(&entries_len).await?;
+
+    for entry in matched_paths {
+        let entry_len = u32::to_be_bytes(u32::try_from(entry.len())?);
+        stream.write_all(&entry_len).await?;
+
+        stream.write_all(entry.as_encoded_bytes()).await?;
+        step(stream).await?;
+    }
+
+    success(stream).await?;
+
+    Ok(())
+}
 
 // Server <- Client
 pub async fn handle_upload(
@@ -156,7 +231,7 @@ async fn receive_file(
         remaining -= n as u64;
     }
 
-    file.flush().await?;
+    file.sync_all().await?;
 
     drop(file);
     tokio::fs::rename(&temp_path, output_path).await?;
@@ -227,23 +302,27 @@ fn expand_tilde(path: PathBuf) -> Res<PathBuf> {
 
 #[inline]
 async fn step(stream: &mut Stream) -> io::Result<()> {
-    stream.write_all(&[ScpStatus::Continue as u8]).await?;
+    stream.write_all(&ScpStatus::Continue.to_byte()).await?;
     stream.flush().await
 }
 
 #[inline]
 async fn success(stream: &mut Stream) -> io::Result<()> {
-    stream.write_all(&[ScpStatus::Success as u8]).await?;
+    stream.write_all(&ScpStatus::Success.to_byte()).await?;
     stream.flush().await
 }
 
 // "we had an error" > "error length" > "error" > "flush" > "shutdown stream"
 async fn write_error_and_kill(stream: &mut Stream, error: &str) -> Res<!> {
     log!(e "Writing error to client");
-    stream.write_all(&[ScpStatus::Error as u8]).await?;
+    stream.write_all(&ScpStatus::Error.to_byte()).await?;
     stream.write_all(&u32::try_from(error.len())?.to_be_bytes()).await?;
     stream.write_all(error.as_bytes()).await?;
 
+    kill_stream(stream, error).await
+}
+
+async fn kill_stream(stream: &mut Stream, error: &str) -> Res<!> {
     stream.flush().await?;
     stream.shutdown().await?;
     Err(error.into())
